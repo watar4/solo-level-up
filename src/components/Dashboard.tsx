@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { User } from 'firebase/auth';
 import {
   DndContext,
-  DragOverlay,
   PointerSensor,
   TouchSensor,
   closestCenter,
@@ -65,6 +64,9 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
   const [skillsOpen, setSkillsOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [actionSheet, setActionSheet] = useState<ActionSheetState | null>(null);
+  // Explicit "what's being dragged" id, set the instant dnd-kit fires
+  // onDragStart. Forwarded to each SortableQuestCard so the lift visual can
+  // fire even if useSortable.isDragging propagates a tick late.
   const [draggingId, setDraggingId] = useState<string | null>(null);
 
   const [active, archived] = useMemo(() => {
@@ -89,53 +91,72 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
     [active]
   );
 
-  const paginate = active.length > VIEWPORT_SIZE;
-  const maxStart = Math.max(0, active.length - VIEWPORT_SIZE);
-  const [viewStart, setViewStart] = useState(0);
-  // Clamp when the list shrinks (e.g. deletion) so we never sit past the end.
+  // All active quests are always rendered inside a scrollable container so
+  // a drag operation can reorder across the full list (dnd-kit's autoScroll
+  // pans the container when the dragged item approaches the edge). The ▲/▼
+  // buttons step the scroll one card at a time — same intent as the previous
+  // pagination, just expressed as scrollBy.
+  const showScrollControls = active.length > VIEWPORT_SIZE;
+  const listRef = useRef<HTMLDivElement>(null);
+  const [scrollState, setScrollState] = useState({ top: 0, max: 0 });
+
+  const updateScrollState = () => {
+    const el = listRef.current;
+    if (!el) return;
+    setScrollState({
+      top: el.scrollTop,
+      max: Math.max(0, el.scrollHeight - el.clientHeight),
+    });
+  };
+
   useEffect(() => {
-    if (viewStart > maxStart) setViewStart(maxStart);
-  }, [maxStart, viewStart]);
+    updateScrollState();
+  }, [active.length]);
 
-  const visibleStart = paginate ? viewStart : 0;
-  const visibleEnd = paginate ? viewStart + VIEWPORT_SIZE : active.length;
-  const visible = paginate ? active.slice(visibleStart, visibleEnd) : active;
+  const stepScroll = (dir: 'up' | 'down') => {
+    const el = listRef.current;
+    if (!el) return;
+    const step = el.clientHeight / VIEWPORT_SIZE;
+    el.scrollBy({ top: dir === 'up' ? -step : step, behavior: 'auto' });
+    // scrollBy fires `scroll` event but allow a frame for it to settle
+    requestAnimationFrame(updateScrollState);
+  };
 
-  const scrollUp = () => setViewStart((s) => Math.max(0, s - 1));
-  const scrollDown = () => setViewStart((s) => Math.min(maxStart, s + 1));
-
-  // When the user moves a quest off the visible window via the in-card arrows,
-  // follow it so they don't lose track of what they just moved.
-  const handleMoveUp = (q: Quest, fullIdx: number) => {
-    if (paginate && fullIdx === viewStart && viewStart > 0) {
-      setViewStart(viewStart - 1);
-    }
+  // Cross-page moves via the ⋮ menu's up/down arrows; auto-scrolls the
+  // container so the user keeps the moved quest in view.
+  const handleMoveUp = (q: Quest) => {
     void game.moveQuest(q, 'up');
+    requestAnimationFrame(() => {
+      listRef.current?.scrollBy({ top: -(listRef.current.clientHeight / VIEWPORT_SIZE), behavior: 'auto' });
+      updateScrollState();
+    });
   };
-  const handleMoveDown = (q: Quest, fullIdx: number) => {
-    if (paginate && fullIdx === visibleEnd - 1 && viewStart < maxStart) {
-      setViewStart(viewStart + 1);
-    }
+  const handleMoveDown = (q: Quest) => {
     void game.moveQuest(q, 'down');
+    requestAnimationFrame(() => {
+      listRef.current?.scrollBy({ top: listRef.current.clientHeight / VIEWPORT_SIZE, behavior: 'auto' });
+      updateScrollState();
+    });
   };
 
-  // Drag-to-reorder: long-press on touch (50ms), small-move on mouse.
+  // Drag-to-reorder: long-press on touch (200ms), small-move on mouse.
   // Sensors are configured so a normal tap/click still flows to the checkbox
   // and the ⋮ button without spuriously triggering a drag.
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(TouchSensor, {
-      activationConstraint: { delay: 50, tolerance: 8 },
+      activationConstraint: { delay: 200, tolerance: 8 },
     })
   );
 
   const handleDragStart = (event: DragStartEvent) => {
     setDraggingId(event.active.id as string);
-    // Short haptic blip on devices that support it — confirms the long-press
-    // crossed the activation threshold without needing the eye to catch the
-    // visual lift first.
+    // Double-blip haptic pattern on devices that support it (mostly Android).
+    // Two short pulses feel more like a deliberate "click" than a single
+    // sub-perceptual buzz, and reinforce the visual lift at the activation
+    // moment. iOS Safari does not implement navigator.vibrate.
     if (typeof navigator !== 'undefined' && navigator.vibrate) {
-      navigator.vibrate(15);
+      navigator.vibrate([18, 28, 18]);
     }
   };
 
@@ -150,10 +171,6 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
   };
 
   const handleDragCancel = () => setDraggingId(null);
-
-  const draggingQuest = draggingId
-    ? active.find((q) => q.id === draggingId) ?? null
-    : null;
 
   return (
     <div className="min-h-screen px-4 py-6 md:py-10">
@@ -229,46 +246,29 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
                 onDragCancel={handleDragCancel}
               >
                 <SortableContext
-                  items={visible.map((q) => q.id)}
+                  items={active.map((q) => q.id)}
                   strategy={verticalListSortingStrategy}
                 >
-                  <div className="space-y-2">
-                    {visible.map((q, viewIdx) => {
-                      const fullIdx = visibleStart + viewIdx;
-                      return (
-                        <SortableQuestCard
-                          key={q.id}
-                          quest={q}
-                          doneToday={isQuestDoneToday(q)}
-                          busy={game.busyQuestId === q.id}
-                          onToggle={() => game.toggleQuest(q)}
-                          onOpenMenu={() =>
-                            setActionSheet({ quest: q, fullIdx, isArchived: false })
-                          }
-                        />
-                      );
-                    })}
+                  <div
+                    ref={listRef}
+                    onScroll={updateScrollState}
+                    className="space-y-2 max-h-[28rem] overflow-y-auto pr-1.5 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-sys-border/40"
+                  >
+                    {active.map((q, fullIdx) => (
+                      <SortableQuestCard
+                        key={q.id}
+                        quest={q}
+                        doneToday={isQuestDoneToday(q)}
+                        busy={game.busyQuestId === q.id}
+                        forceLifted={draggingId === q.id}
+                        onToggle={() => game.toggleQuest(q)}
+                        onOpenMenu={() =>
+                          setActionSheet({ quest: q, fullIdx, isArchived: false })
+                        }
+                      />
+                    ))}
                   </div>
                 </SortableContext>
-                <DragOverlay dropAnimation={null}>
-                  {draggingQuest && (
-                    <div
-                      style={{
-                        transform: 'scale(1.06)',
-                        boxShadow:
-                          '0 24px 50px rgba(0,0,0,0.6), 0 0 28px rgba(0,212,255,0.6)',
-                        filter: 'brightness(1.12)',
-                        cursor: 'grabbing',
-                      }}
-                    >
-                      <QuestCard
-                        quest={draggingQuest}
-                        doneToday={isQuestDoneToday(draggingQuest)}
-                        onToggle={() => {}}
-                      />
-                    </div>
-                  )}
-                </DragOverlay>
               </DndContext>
             )}
 
@@ -278,12 +278,12 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
               </p>
             )}
 
-            {paginate && (
+            {showScrollControls && (
               <div className="mt-3 flex items-center justify-center gap-3 border-t border-sys-border/20 pt-3">
                 <button
                   type="button"
-                  onClick={scrollUp}
-                  disabled={viewStart === 0}
+                  onClick={() => stepScroll('up')}
+                  disabled={scrollState.top <= 0}
                   aria-label="1件上へスクロール"
                   title="1件上へ"
                   className="border border-sys-border/40 px-2 py-1 text-sys-text hover:border-sys-accent hover:text-sys-accent disabled:opacity-30 disabled:hover:border-sys-border/40 disabled:hover:text-sys-text transition"
@@ -291,12 +291,12 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
                   <ChevronUp className="h-4 w-4" />
                 </button>
                 <span className="font-mono text-[11px] text-sys-muted tabular-nums">
-                  {visibleStart + 1}–{Math.min(active.length, visibleEnd)} / {active.length}
+                  全 {active.length} 件
                 </span>
                 <button
                   type="button"
-                  onClick={scrollDown}
-                  disabled={viewStart >= maxStart}
+                  onClick={() => stepScroll('down')}
+                  disabled={scrollState.top >= scrollState.max - 1}
                   aria-label="1件下へスクロール"
                   title="1件下へ"
                   className="border border-sys-border/40 px-2 py-1 text-sys-text hover:border-sys-accent hover:text-sys-accent disabled:opacity-30 disabled:hover:border-sys-border/40 disabled:hover:text-sys-text transition"
@@ -408,12 +408,12 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
         }}
         onMoveUp={() => {
           if (actionSheet && !actionSheet.isArchived) {
-            handleMoveUp(actionSheet.quest, actionSheet.fullIdx);
+            handleMoveUp(actionSheet.quest);
           }
         }}
         onMoveDown={() => {
           if (actionSheet && !actionSheet.isArchived) {
-            handleMoveDown(actionSheet.quest, actionSheet.fullIdx);
+            handleMoveDown(actionSheet.quest);
           }
         }}
         onDelete={() => {
