@@ -4,11 +4,12 @@ logs
 npm-debug.log*
 pnpm-debug.log*
 
-# Dependencies
+# Dependencies & build output
 node_modules
 dist
 dist-ssr
 *.local
+*.tsbuildinfo
 
 # Editor / OS
 .vscode/*
