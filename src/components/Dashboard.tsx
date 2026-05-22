@@ -3,6 +3,7 @@ import type { User } from 'firebase/auth';
 import { StatusPanel } from './StatusPanel';
 import { QuestCard } from './QuestCard';
 import { AddQuestModal } from './AddQuestModal';
+import { QuestActionSheet } from './QuestActionSheet';
 import { SystemToast } from './SystemToast';
 import { HistoryPanel } from './HistoryPanel';
 import { AchievementsPanel } from './AchievementsPanel';
@@ -24,6 +25,12 @@ import {
   Sparkles,
 } from 'lucide-react';
 
+interface ActionSheetState {
+  quest: Quest;
+  fullIdx: number;
+  isArchived: boolean;
+}
+
 interface Props {
   user: User;
   character: Character;
@@ -44,6 +51,7 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
   const [achOpen, setAchOpen] = useState(false);
   const [skillsOpen, setSkillsOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
+  const [actionSheet, setActionSheet] = useState<ActionSheetState | null>(null);
 
   const [active, archived] = useMemo(() => {
     const a = game.quests.filter((q) => !q.archived);
@@ -173,12 +181,9 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
                       doneToday={isQuestDoneToday(q)}
                       busy={game.busyQuestId === q.id}
                       onToggle={() => game.toggleQuest(q)}
-                      onDelete={() => handleDelete(q)}
-                      onEdit={() => setQuestModal({ open: true, editing: q })}
-                      onMoveUp={() => handleMoveUp(q, fullIdx)}
-                      onMoveDown={() => handleMoveDown(q, fullIdx)}
-                      canMoveUp={fullIdx > 0}
-                      canMoveDown={fullIdx < active.length - 1}
+                      onOpenMenu={() =>
+                        setActionSheet({ quest: q, fullIdx, isArchived: false })
+                      }
                     />
                   );
                 })
@@ -226,7 +231,9 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
                       doneToday={true}
                       busy={game.busyQuestId === q.id}
                       onToggle={() => game.toggleQuest(q)}
-                      onDelete={() => handleDelete(q)}
+                      onOpenMenu={() =>
+                        setActionSheet({ quest: q, fullIdx: -1, isArchived: true })
+                      }
                     />
                   ))}
                 </div>
@@ -296,6 +303,33 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
               archived: false,
             });
           }
+        }}
+      />
+
+      <QuestActionSheet
+        quest={actionSheet?.quest ?? null}
+        canMoveUp={!!actionSheet && !actionSheet.isArchived && actionSheet.fullIdx > 0}
+        canMoveDown={
+          !!actionSheet &&
+          !actionSheet.isArchived &&
+          actionSheet.fullIdx < active.length - 1
+        }
+        onClose={() => setActionSheet(null)}
+        onEdit={() => {
+          if (actionSheet) setQuestModal({ open: true, editing: actionSheet.quest });
+        }}
+        onMoveUp={() => {
+          if (actionSheet && !actionSheet.isArchived) {
+            handleMoveUp(actionSheet.quest, actionSheet.fullIdx);
+          }
+        }}
+        onMoveDown={() => {
+          if (actionSheet && !actionSheet.isArchived) {
+            handleMoveDown(actionSheet.quest, actionSheet.fullIdx);
+          }
+        }}
+        onDelete={() => {
+          if (actionSheet) handleDelete(actionSheet.quest);
         }}
       />
 
