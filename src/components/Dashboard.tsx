@@ -93,34 +93,7 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
           </div>
         </header>
 
-        <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
-          <div className="space-y-6">
-            <StatusPanel character={character} email={user.email} />
-
-            <SystemWindow title="Today" subtitle="progress">
-              <div className="space-y-2">
-                <p className="text-sm text-sys-text/80">
-                  本日のクエスト達成:{' '}
-                  <span className="font-mono text-lg text-sys-accent">
-                    {todayDoneCount}
-                  </span>{' '}
-                  <span className="text-sys-muted">/ {active.length}</span>
-                </p>
-                <div className="h-2 w-full overflow-hidden border border-sys-border/30 bg-black/40">
-                  <div
-                    className="h-full bg-gradient-to-r from-sys-ok to-sys-accent transition-all duration-500"
-                    style={{
-                      width:
-                        active.length > 0
-                          ? `${(todayDoneCount / active.length) * 100}%`
-                          : '0%',
-                    }}
-                  />
-                </div>
-              </div>
-            </SystemWindow>
-          </div>
-
+        <div className="grid gap-6 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
           <SystemWindow title="Quest Log" subtitle="daily missions">
             <div className="mb-3 flex items-center justify-between">
               <p className="text-xs uppercase tracking-widest text-sys-muted flex items-center gap-1.5">
@@ -177,6 +150,33 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
               </details>
             )}
           </SystemWindow>
+
+          <div className="space-y-6">
+            <StatusPanel character={character} email={user.email} />
+
+            <SystemWindow title="Today" subtitle="progress">
+              <div className="space-y-2">
+                <p className="text-sm text-sys-text/80">
+                  本日のクエスト達成:{' '}
+                  <span className="font-mono text-lg text-sys-accent">
+                    {todayDoneCount}
+                  </span>{' '}
+                  <span className="text-sys-muted">/ {active.length}</span>
+                </p>
+                <div className="h-2 w-full overflow-hidden border border-sys-border/30 bg-black/40">
+                  <div
+                    className="h-full bg-gradient-to-r from-sys-ok to-sys-accent transition-all duration-500"
+                    style={{
+                      width:
+                        active.length > 0
+                          ? `${(todayDoneCount / active.length) * 100}%`
+                          : '0%',
+                    }}
+                  />
+                </div>
+              </div>
+            </SystemWindow>
+          </div>
         </div>
 
         <footer className="mt-10 text-center text-[11px] text-sys-muted">
