@@ -139,13 +139,13 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
     });
   };
 
-  // Drag-to-reorder: long-press on touch (200ms), small-move on mouse.
+  // Drag-to-reorder: long-press on touch (300ms), small-move on mouse.
   // Sensors are configured so a normal tap/click still flows to the checkbox
   // and the ⋮ button without spuriously triggering a drag.
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(TouchSensor, {
-      activationConstraint: { delay: 200, tolerance: 8 },
+      activationConstraint: { delay: 300, tolerance: 8 },
     })
   );
 
