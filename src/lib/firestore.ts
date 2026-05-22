@@ -51,24 +51,32 @@ export async function updateCharacter(uid: string, patch: Partial<Character>): P
 
 export function subscribeQuests(
   uid: string,
-  onChange: (quests: Quest[]) => void
+  onChange: (quests: Quest[]) => void,
+  onError?: (err: Error) => void
 ): () => void {
   const q = query(collection(requireDb(), 'quests'), where('uid', '==', uid));
-  return onSnapshot(q, (snap) => {
-    const quests: Quest[] = [];
-    snap.forEach((s) => {
-      const data = s.data() as Omit<Quest, 'id'>;
-      quests.push({ ...data, id: s.id });
-    });
-    // Sort: not-archived first, then newest-created first.
-    quests.sort((a, b) => {
-      if ((a.archived ? 1 : 0) !== (b.archived ? 1 : 0)) {
-        return (a.archived ? 1 : 0) - (b.archived ? 1 : 0);
-      }
-      return b.createdAt - a.createdAt;
-    });
-    onChange(quests);
-  });
+  return onSnapshot(
+    q,
+    (snap) => {
+      const quests: Quest[] = [];
+      snap.forEach((s) => {
+        const data = s.data() as Omit<Quest, 'id'>;
+        quests.push({ ...data, id: s.id });
+      });
+      // Sort: not-archived first, then newest-created first.
+      quests.sort((a, b) => {
+        if ((a.archived ? 1 : 0) !== (b.archived ? 1 : 0)) {
+          return (a.archived ? 1 : 0) - (b.archived ? 1 : 0);
+        }
+        return b.createdAt - a.createdAt;
+      });
+      onChange(quests);
+    },
+    (err) => {
+      console.error('[quests:subscribe] failed', err);
+      onError?.(err);
+    }
+  );
 }
 
 export async function createQuest(quest: Omit<Quest, 'id'>): Promise<string> {

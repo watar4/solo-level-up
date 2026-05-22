@@ -25,6 +25,7 @@ export function AddQuestModal({ open, onClose, onCreate }: Props) {
   const [targetStat, setTargetStat] = useState<StatKey>('STR');
   const [difficulty, setDifficulty] = useState<Difficulty>('E');
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   if (!open) return null;
 
@@ -32,6 +33,7 @@ export function AddQuestModal({ open, onClose, onCreate }: Props) {
     e.preventDefault();
     if (!title.trim() || busy) return;
     setBusy(true);
+    setError(null);
     try {
       await onCreate({ title: title.trim(), description: description.trim(), type, targetStat, difficulty });
       setTitle('');
@@ -40,6 +42,10 @@ export function AddQuestModal({ open, onClose, onCreate }: Props) {
       setTargetStat('STR');
       setDifficulty('E');
       onClose();
+    } catch (err) {
+      console.error('[quest:create] failed', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(`保存に失敗しました: ${msg}`);
     } finally {
       setBusy(false);
     }
@@ -141,6 +147,15 @@ export function AddQuestModal({ open, onClose, onCreate }: Props) {
                 </select>
               </label>
             </div>
+
+            {error && (
+              <div className="border border-sys-danger/60 bg-sys-danger/10 p-3 text-xs text-sys-danger">
+                {error}
+                <div className="mt-1 text-[10px] text-sys-danger/70">
+                  DevTools(F12) → Console の詳細を確認してください。
+                </div>
+              </div>
+            )}
 
             <div className="flex gap-2 pt-2">
               <button
