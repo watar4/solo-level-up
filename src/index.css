@@ -1,0 +1,136 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-sys-bg text-sys-text font-sans antialiased;
+    background-image:
+      radial-gradient(circle at 20% 10%, rgba(0, 212, 255, 0.08), transparent 50%),
+      radial-gradient(circle at 80% 90%, rgba(95, 90, 255, 0.08), transparent 55%),
+      linear-gradient(180deg, #02040a 0%, #050810 100%);
+    background-attachment: fixed;
+  }
+  ::selection {
+    background: rgba(0, 212, 255, 0.35);
+  }
+}
+
+@layer components {
+  /* Solo-Leveling style "system window" — sharp clipped corners with cyan border + inner glow */
+  .sys-window {
+    position: relative;
+    background:
+      linear-gradient(180deg, rgba(8, 14, 30, 0.92) 0%, rgba(5, 10, 22, 0.92) 100%);
+    border: 1px solid rgba(95, 201, 255, 0.55);
+    box-shadow:
+      0 0 0 1px rgba(95, 201, 255, 0.15),
+      0 0 24px rgba(0, 212, 255, 0.18),
+      inset 0 0 24px rgba(0, 212, 255, 0.05);
+    clip-path: polygon(
+      14px 0,
+      calc(100% - 14px) 0,
+      100% 14px,
+      100% calc(100% - 14px),
+      calc(100% - 14px) 100%,
+      14px 100%,
+      0 calc(100% - 14px),
+      0 14px
+    );
+  }
+
+  .sys-window::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(
+      180deg,
+      transparent 0%,
+      rgba(95, 201, 255, 0.04) 50%,
+      transparent 100%
+    );
+    background-size: 100% 8px;
+    background-repeat: repeat-y;
+    opacity: 0.6;
+    mix-blend-mode: screen;
+  }
+
+  .sys-title {
+    @apply text-sys-accent font-bold tracking-[0.3em] text-xs uppercase;
+    text-shadow: 0 0 8px rgba(0, 212, 255, 0.5);
+  }
+
+  .sys-button {
+    @apply relative inline-flex items-center justify-center gap-2 px-4 py-2 font-bold tracking-wider uppercase text-sm;
+    color: #c2ecff;
+    background: linear-gradient(180deg, rgba(0, 212, 255, 0.18), rgba(0, 100, 200, 0.12));
+    border: 1px solid rgba(95, 201, 255, 0.6);
+    box-shadow:
+      0 0 0 1px rgba(95, 201, 255, 0.1),
+      0 0 14px rgba(0, 212, 255, 0.25);
+    clip-path: polygon(
+      8px 0,
+      calc(100% - 8px) 0,
+      100% 8px,
+      100% calc(100% - 8px),
+      calc(100% - 8px) 100%,
+      8px 100%,
+      0 calc(100% - 8px),
+      0 8px
+    );
+    transition: transform 80ms ease, box-shadow 200ms ease, background 200ms ease;
+  }
+  .sys-button:hover {
+    background: linear-gradient(180deg, rgba(0, 212, 255, 0.32), rgba(0, 130, 220, 0.2));
+    box-shadow:
+      0 0 0 1px rgba(95, 201, 255, 0.2),
+      0 0 22px rgba(0, 212, 255, 0.45);
+  }
+  .sys-button:active {
+    transform: translateY(1px);
+  }
+  .sys-button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .sys-button-danger {
+    color: #ffd0d6;
+    background: linear-gradient(180deg, rgba(255, 75, 105, 0.2), rgba(180, 30, 60, 0.12));
+    border-color: rgba(255, 107, 129, 0.6);
+    box-shadow: 0 0 14px rgba(255, 75, 105, 0.25);
+  }
+  .sys-button-danger:hover {
+    background: linear-gradient(180deg, rgba(255, 75, 105, 0.35), rgba(180, 30, 60, 0.2));
+    box-shadow: 0 0 22px rgba(255, 75, 105, 0.45);
+  }
+
+  .sys-input {
+    @apply w-full bg-black/40 border border-sys-border/40 px-3 py-2 text-sys-text outline-none;
+    box-shadow: inset 0 0 8px rgba(0, 212, 255, 0.08);
+  }
+  .sys-input:focus {
+    border-color: rgba(95, 201, 255, 0.9);
+    box-shadow:
+      inset 0 0 8px rgba(0, 212, 255, 0.15),
+      0 0 12px rgba(0, 212, 255, 0.25);
+  }
+
+  .corner-mark {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    border-color: #5fc9ff;
+    pointer-events: none;
+  }
+  .corner-mark.tl { top: 6px; left: 6px; border-top: 2px solid; border-left: 2px solid; }
+  .corner-mark.tr { top: 6px; right: 6px; border-top: 2px solid; border-right: 2px solid; }
+  .corner-mark.bl { bottom: 6px; left: 6px; border-bottom: 2px solid; border-left: 2px solid; }
+  .corner-mark.br { bottom: 6px; right: 6px; border-bottom: 2px solid; border-right: 2px solid; }
+}
