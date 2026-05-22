@@ -1,7 +1,7 @@
 import type { Quest } from '../types';
 import { DIFFICULTY_EXP, STAT_LABELS } from '../types';
 import { daysUntilWeekReset, effectiveStreak, todayKey, yesterdayKey } from '../lib/leveling';
-import { Check, Clock, Flame, Trash2 } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, Clock, Flame, Pencil, Trash2 } from 'lucide-react';
 
 interface Props {
   quest: Quest;
@@ -9,6 +9,11 @@ interface Props {
   busy?: boolean;
   onToggle: () => void;
   onDelete: () => void;
+  onEdit?: () => void;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+  canMoveUp?: boolean;
+  canMoveDown?: boolean;
 }
 
 const DIFFICULTY_COLOR: Record<string, string> = {
@@ -26,7 +31,18 @@ const TYPE_LABEL: Record<Quest['type'], string> = {
   'one-time': '単発',
 };
 
-export function QuestCard({ quest, doneToday, busy, onToggle, onDelete }: Props) {
+export function QuestCard({
+  quest,
+  doneToday,
+  busy,
+  onToggle,
+  onDelete,
+  onEdit,
+  onMoveUp,
+  onMoveDown,
+  canMoveUp,
+  canMoveDown,
+}: Props) {
   const expReward = DIFFICULTY_EXP[quest.difficulty];
   // Re-derive streak from completedDates so it expires automatically when the
   // user skips a day, instead of showing the stale value stored in Firestore.
@@ -41,6 +57,8 @@ export function QuestCard({ quest, doneToday, busy, onToggle, onDelete }: Props)
     !quest.completedDates.includes(todayKey()) &&
     quest.completedDates.includes(yesterdayKey());
   const weekResetDays = quest.type === 'weekly' ? daysUntilWeekReset() : null;
+
+  const showMove = !!(onMoveUp || onMoveDown);
 
   return (
     <div
@@ -126,14 +144,54 @@ export function QuestCard({ quest, doneToday, busy, onToggle, onDelete }: Props)
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={onDelete}
-          aria-label="クエストを削除"
-          className="opacity-0 group-hover:opacity-100 text-sys-muted hover:text-sys-danger transition"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
+        <div className="flex items-start gap-1.5">
+          {showMove && (
+            <div className="flex flex-col">
+              <button
+                type="button"
+                onClick={onMoveUp}
+                disabled={!canMoveUp}
+                aria-label="上に移動"
+                title="上に移動"
+                className="text-sys-muted/70 hover:text-sys-accent disabled:opacity-20 disabled:hover:text-sys-muted/70 transition"
+              >
+                <ChevronUp className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={onMoveDown}
+                disabled={!canMoveDown}
+                aria-label="下に移動"
+                title="下に移動"
+                className="text-sys-muted/70 hover:text-sys-accent disabled:opacity-20 disabled:hover:text-sys-muted/70 transition"
+              >
+                <ChevronDown className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+          <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition">
+            {onEdit && (
+              <button
+                type="button"
+                onClick={onEdit}
+                aria-label="クエストを編集"
+                title="クエストを編集"
+                className="text-sys-muted hover:text-sys-accent transition"
+              >
+                <Pencil className="h-4 w-4" />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onDelete}
+              aria-label="クエストを削除"
+              title="クエストを削除"
+              className="text-sys-muted hover:text-sys-danger transition"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

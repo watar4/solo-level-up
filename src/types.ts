@@ -66,6 +66,7 @@ export interface Quest {
   lastCompletedAt?: number;
   createdAt: number;
   archived?: boolean;
+  order?: number;           // manual ordering; undefined = fall back to createdAt desc
 }
 
 export interface LevelUpEvent {

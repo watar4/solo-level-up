@@ -37,6 +37,14 @@ import {
 } from '../lib/achievements';
 import { newlyUnlockedSkills, type SkillDef } from '../lib/skills';
 
+export interface QuestEditPatch {
+  title: string;
+  description: string;
+  type: Quest['type'];
+  targetStat: StatKey;
+  difficulty: Quest['difficulty'];
+}
+
 export interface GameData {
   character: Character | null;
   quests: Quest[];
@@ -48,6 +56,8 @@ export interface GameData {
   createCharacterWithName: (name: string) => Promise<void>;
   toggleQuest: (quest: Quest) => Promise<void>;
   removeQuestWithRefund: (quest: Quest) => Promise<void>;
+  editQuest: (quest: Quest, patch: QuestEditPatch) => Promise<void>;
+  moveQuest: (quest: Quest, direction: 'up' | 'down') => Promise<void>;
   resetAccount: () => Promise<void>;
 }
 
@@ -450,6 +460,43 @@ export function useGameData(user: User | null): GameData {
     [user, character, busyQuestId]
   );
 
+  const editQuest = useCallback(
+    async (quest: Quest, patch: QuestEditPatch): Promise<void> => {
+      // If switching away from "daily" the stored streak no longer applies — reset it.
+      const typeChanged = patch.type !== quest.type;
+      const streakReset = typeChanged && patch.type !== 'daily' ? { streak: 0 } : {};
+      await updateQuest(quest.id, {
+        title: patch.title,
+        description: patch.description,
+        type: patch.type,
+        targetStat: patch.targetStat,
+        difficulty: patch.difficulty,
+        ...streakReset,
+      });
+    },
+    []
+  );
+
+  const moveQuest = useCallback(
+    async (quest: Quest, direction: 'up' | 'down'): Promise<void> => {
+      const active = quests.filter((q) => !q.archived);
+      const idx = active.findIndex((q) => q.id === quest.id);
+      if (idx < 0) return;
+      const target = direction === 'up' ? idx - 1 : idx + 1;
+      if (target < 0 || target >= active.length) return;
+      const reordered = [...active];
+      [reordered[idx], reordered[target]] = [reordered[target], reordered[idx]];
+      // Normalize: persist sequential order so the manual arrangement sticks
+      // even for quests that previously had no `order` field.
+      await Promise.all(
+        reordered.map((q, i) =>
+          q.order === i ? Promise.resolve() : updateQuest(q.id, { order: i })
+        )
+      );
+    },
+    [quests]
+  );
+
   const popEvent = useCallback(() => {
     setPendingEvents((prev) => prev.slice(1));
   }, []);
@@ -485,6 +532,8 @@ export function useGameData(user: User | null): GameData {
     createCharacterWithName,
     toggleQuest,
     removeQuestWithRefund,
+    editQuest,
+    moveQuest,
     resetAccount,
   };
 }

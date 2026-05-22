@@ -68,11 +68,16 @@ export function subscribeQuests(
         const data = s.data() as Omit<Quest, 'id'>;
         quests.push({ ...data, id: s.id });
       });
-      // Sort: not-archived first, then newest-created first.
+      // Sort: not-archived first, then by manual `order` (asc, undefined = MAX),
+      // tiebreak by newest-created first so brand-new quests still appear at top
+      // until the user has manually ordered them.
       quests.sort((a, b) => {
         if ((a.archived ? 1 : 0) !== (b.archived ? 1 : 0)) {
           return (a.archived ? 1 : 0) - (b.archived ? 1 : 0);
         }
+        const ao = a.order ?? Number.MAX_SAFE_INTEGER;
+        const bo = b.order ?? Number.MAX_SAFE_INTEGER;
+        if (ao !== bo) return ao - bo;
         return b.createdAt - a.createdAt;
       });
       onChange(quests);

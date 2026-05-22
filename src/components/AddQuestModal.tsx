@@ -1,24 +1,29 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { SystemWindow } from './SystemWindow';
 import { ALL_STATS, DIFFICULTY_EXP, STAT_LABELS } from '../types';
-import type { Difficulty, QuestType, StatKey } from '../types';
+import type { Difficulty, Quest, QuestType, StatKey } from '../types';
 import { X } from 'lucide-react';
+
+export interface QuestFormInput {
+  title: string;
+  description: string;
+  type: QuestType;
+  targetStat: StatKey;
+  difficulty: Difficulty;
+}
 
 interface Props {
   open: boolean;
   onClose: () => void;
-  onCreate: (input: {
-    title: string;
-    description: string;
-    type: QuestType;
-    targetStat: StatKey;
-    difficulty: Difficulty;
-  }) => Promise<void>;
+  onSubmit: (input: QuestFormInput) => Promise<void>;
+  // When `initial` is provided the modal acts as an edit form.
+  initial?: Quest | null;
 }
 
 const DIFFICULTIES: Difficulty[] = ['E', 'D', 'C', 'B', 'A', 'S'];
 
-export function AddQuestModal({ open, onClose, onCreate }: Props) {
+export function AddQuestModal({ open, onClose, onSubmit, initial }: Props) {
+  const isEdit = !!initial;
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [type, setType] = useState<QuestType>('daily');
@@ -26,6 +31,18 @@ export function AddQuestModal({ open, onClose, onCreate }: Props) {
   const [difficulty, setDifficulty] = useState<Difficulty>('E');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Re-seed state whenever the modal is opened (or initial changes), so reopen
+  // doesn't carry over stale values from a previous edit/create.
+  useEffect(() => {
+    if (!open) return;
+    setTitle(initial?.title ?? '');
+    setDescription(initial?.description ?? '');
+    setType(initial?.type ?? 'daily');
+    setTargetStat(initial?.targetStat ?? 'STR');
+    setDifficulty(initial?.difficulty ?? 'E');
+    setError(null);
+  }, [open, initial]);
 
   if (!open) return null;
 
@@ -35,15 +52,16 @@ export function AddQuestModal({ open, onClose, onCreate }: Props) {
     setBusy(true);
     setError(null);
     try {
-      await onCreate({ title: title.trim(), description: description.trim(), type, targetStat, difficulty });
-      setTitle('');
-      setDescription('');
-      setType('daily');
-      setTargetStat('STR');
-      setDifficulty('E');
+      await onSubmit({
+        title: title.trim(),
+        description: description.trim(),
+        type,
+        targetStat,
+        difficulty,
+      });
       onClose();
     } catch (err) {
-      console.error('[quest:create] failed', err);
+      console.error('[quest:submit] failed', err);
       const msg = err instanceof Error ? err.message : String(err);
       setError(`保存に失敗しました: ${msg}`);
     } finally {
@@ -57,7 +75,10 @@ export function AddQuestModal({ open, onClose, onCreate }: Props) {
       onClick={onClose}
     >
       <div className="w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
-        <SystemWindow title="クエスト発行" subtitle="quest issue">
+        <SystemWindow
+          title={isEdit ? 'クエスト編集' : 'クエスト発行'}
+          subtitle={isEdit ? 'quest edit' : 'quest issue'}
+        >
           <form onSubmit={submit} className="space-y-4">
             <div className="flex justify-end">
               <button
@@ -148,6 +169,12 @@ export function AddQuestModal({ open, onClose, onCreate }: Props) {
               </label>
             </div>
 
+            {isEdit && initial && initial.completedDates.length > 0 && (
+              <p className="text-[11px] text-sys-muted">
+                ※ 既に獲得した EXP / ステータスは編集の影響を受けません。難易度を変えても遡及計算はしません。
+              </p>
+            )}
+
             {error && (
               <div className="border border-sys-danger/60 bg-sys-danger/10 p-3 text-xs text-sys-danger">
                 {error}
@@ -170,7 +197,7 @@ export function AddQuestModal({ open, onClose, onCreate }: Props) {
                 className="sys-button flex-1 justify-center"
                 disabled={!title.trim() || busy}
               >
-                {busy ? '発行中…' : '発行する'}
+                {busy ? (isEdit ? '更新中…' : '発行中…') : isEdit ? '更新する' : '発行する'}
               </button>
             </div>
           </form>

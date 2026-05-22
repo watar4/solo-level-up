@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { User } from 'firebase/auth';
 import { StatusPanel } from './StatusPanel';
 import { QuestCard } from './QuestCard';
@@ -11,8 +11,18 @@ import { ResetAccountModal } from './ResetAccountModal';
 import { SystemWindow } from './SystemWindow';
 import { isQuestDoneToday, useGameData } from '../hooks/useGameData';
 import { createQuest } from '../lib/firestore';
-import type { Character } from '../types';
-import { Award, History, LogOut, Plus, RotateCcw, ScrollText, Sparkles } from 'lucide-react';
+import type { Character, Quest } from '../types';
+import {
+  Award,
+  ChevronDown,
+  ChevronUp,
+  History,
+  LogOut,
+  Plus,
+  RotateCcw,
+  ScrollText,
+  Sparkles,
+} from 'lucide-react';
 
 interface Props {
   user: User;
@@ -21,8 +31,15 @@ interface Props {
   onSignOut: () => void;
 }
 
+// Paginate (button step-scroll) past this many active quests. Up to N fit
+// naturally on screen; beyond that you advance the viewport one quest at a time.
+const VIEWPORT_SIZE = 5;
+
 export function Dashboard({ user, character, game, onSignOut }: Props) {
-  const [modalOpen, setModalOpen] = useState(false);
+  const [questModal, setQuestModal] = useState<{ open: boolean; editing: Quest | null }>({
+    open: false,
+    editing: null,
+  });
   const [historyOpen, setHistoryOpen] = useState(false);
   const [achOpen, setAchOpen] = useState(false);
   const [skillsOpen, setSkillsOpen] = useState(false);
@@ -49,6 +66,36 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
     () => active.filter((q) => isQuestDoneToday(q)).length,
     [active]
   );
+
+  const paginate = active.length > VIEWPORT_SIZE;
+  const maxStart = Math.max(0, active.length - VIEWPORT_SIZE);
+  const [viewStart, setViewStart] = useState(0);
+  // Clamp when the list shrinks (e.g. deletion) so we never sit past the end.
+  useEffect(() => {
+    if (viewStart > maxStart) setViewStart(maxStart);
+  }, [maxStart, viewStart]);
+
+  const visibleStart = paginate ? viewStart : 0;
+  const visibleEnd = paginate ? viewStart + VIEWPORT_SIZE : active.length;
+  const visible = paginate ? active.slice(visibleStart, visibleEnd) : active;
+
+  const scrollUp = () => setViewStart((s) => Math.max(0, s - 1));
+  const scrollDown = () => setViewStart((s) => Math.min(maxStart, s + 1));
+
+  // When the user moves a quest off the visible window via the in-card arrows,
+  // follow it so they don't lose track of what they just moved.
+  const handleMoveUp = (q: Quest, fullIdx: number) => {
+    if (paginate && fullIdx === viewStart && viewStart > 0) {
+      setViewStart(viewStart - 1);
+    }
+    void game.moveQuest(q, 'up');
+  };
+  const handleMoveDown = (q: Quest, fullIdx: number) => {
+    if (paginate && fullIdx === visibleEnd - 1 && viewStart < maxStart) {
+      setViewStart(viewStart + 1);
+    }
+    void game.moveQuest(q, 'down');
+  };
 
   return (
     <div className="min-h-screen px-4 py-6 md:py-10">
@@ -103,7 +150,7 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
               <button
                 type="button"
                 className="sys-button"
-                onClick={() => setModalOpen(true)}
+                onClick={() => setQuestModal({ open: true, editing: null })}
               >
                 <Plus className="h-4 w-4" />
                 発行
@@ -117,18 +164,54 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
                   「発行」から最初のミッションを登録しましょう。
                 </div>
               ) : (
-                active.map((q) => (
-                  <QuestCard
-                    key={q.id}
-                    quest={q}
-                    doneToday={isQuestDoneToday(q)}
-                    busy={game.busyQuestId === q.id}
-                    onToggle={() => game.toggleQuest(q)}
-                    onDelete={() => handleDelete(q)}
-                  />
-                ))
+                visible.map((q, viewIdx) => {
+                  const fullIdx = visibleStart + viewIdx;
+                  return (
+                    <QuestCard
+                      key={q.id}
+                      quest={q}
+                      doneToday={isQuestDoneToday(q)}
+                      busy={game.busyQuestId === q.id}
+                      onToggle={() => game.toggleQuest(q)}
+                      onDelete={() => handleDelete(q)}
+                      onEdit={() => setQuestModal({ open: true, editing: q })}
+                      onMoveUp={() => handleMoveUp(q, fullIdx)}
+                      onMoveDown={() => handleMoveDown(q, fullIdx)}
+                      canMoveUp={fullIdx > 0}
+                      canMoveDown={fullIdx < active.length - 1}
+                    />
+                  );
+                })
               )}
             </div>
+
+            {paginate && (
+              <div className="mt-3 flex items-center justify-center gap-3 border-t border-sys-border/20 pt-3">
+                <button
+                  type="button"
+                  onClick={scrollUp}
+                  disabled={viewStart === 0}
+                  aria-label="1件上へスクロール"
+                  title="1件上へ"
+                  className="border border-sys-border/40 px-2 py-1 text-sys-text hover:border-sys-accent hover:text-sys-accent disabled:opacity-30 disabled:hover:border-sys-border/40 disabled:hover:text-sys-text transition"
+                >
+                  <ChevronUp className="h-4 w-4" />
+                </button>
+                <span className="font-mono text-[11px] text-sys-muted tabular-nums">
+                  {visibleStart + 1}–{Math.min(active.length, visibleEnd)} / {active.length}
+                </span>
+                <button
+                  type="button"
+                  onClick={scrollDown}
+                  disabled={viewStart >= maxStart}
+                  aria-label="1件下へスクロール"
+                  title="1件下へ"
+                  className="border border-sys-border/40 px-2 py-1 text-sys-text hover:border-sys-accent hover:text-sys-accent disabled:opacity-30 disabled:hover:border-sys-border/40 disabled:hover:text-sys-text transition"
+                >
+                  <ChevronDown className="h-4 w-4" />
+                </button>
+              </div>
+            )}
 
             {archived.length > 0 && (
               <details className="mt-5 border-t border-sys-border/20 pt-3">
@@ -193,21 +276,26 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
       </div>
 
       <AddQuestModal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        onCreate={async (input) => {
-          await createQuest({
-            uid: user.uid,
-            title: input.title,
-            description: input.description,
-            type: input.type,
-            targetStat: input.targetStat,
-            difficulty: input.difficulty,
-            completedDates: [],
-            streak: 0,
-            createdAt: Date.now(),
-            archived: false,
-          });
+        open={questModal.open}
+        initial={questModal.editing}
+        onClose={() => setQuestModal({ open: false, editing: null })}
+        onSubmit={async (input) => {
+          if (questModal.editing) {
+            await game.editQuest(questModal.editing, input);
+          } else {
+            await createQuest({
+              uid: user.uid,
+              title: input.title,
+              description: input.description,
+              type: input.type,
+              targetStat: input.targetStat,
+              difficulty: input.difficulty,
+              completedDates: [],
+              streak: 0,
+              createdAt: Date.now(),
+              archived: false,
+            });
+          }
         }}
       />
 
