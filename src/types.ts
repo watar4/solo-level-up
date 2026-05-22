@@ -76,6 +76,14 @@ export interface LevelUpEvent {
   newRank?: Rank;
 }
 
+export interface WeightEntry {
+  id: string;
+  uid: string;
+  date: string;     // YYYY-MM-DD
+  weight: number;   // kg, rounded to 1 decimal place
+  createdAt: number;
+}
+
 export type SystemEventKind = 'level-up' | 'achievement' | 'skill';
 
 export interface SystemEvent {

@@ -22,6 +22,7 @@ import { AchievementsPanel } from './AchievementsPanel';
 import { SkillsPanel } from './SkillsPanel';
 import { ResetAccountModal } from './ResetAccountModal';
 import { SystemWindow } from './SystemWindow';
+import { WeightPanel } from './WeightPanel';
 import { isQuestDoneToday, useGameData } from '../hooks/useGameData';
 import { createQuest } from '../lib/firestore';
 import type { Character, Quest } from '../types';
@@ -331,6 +332,8 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
 
           <div className="space-y-6">
             <StatusPanel character={character} email={user.email} />
+
+            <WeightPanel uid={user.uid} />
 
             <SystemWindow title="Today" subtitle="progress">
               <div className="space-y-2">

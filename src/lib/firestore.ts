@@ -14,7 +14,7 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import type { Character, Quest, StatKey } from '../types';
+import type { Character, Quest, StatKey, WeightEntry } from '../types';
 import { ALL_STATS } from '../types';
 
 function requireDb() {
@@ -169,4 +169,43 @@ export async function getAllCompletions(uid: string): Promise<CompletionLogRich[
 
 export async function deleteCompletions(ids: string[]): Promise<void> {
   await Promise.all(ids.map((id) => deleteDoc(doc(requireDb(), 'completions', id))));
+}
+
+// --- Weight tracking ----------------------------------------------------
+
+export function subscribeWeights(
+  uid: string,
+  onChange: (entries: WeightEntry[]) => void,
+  onError?: (err: Error) => void
+): () => void {
+  const q = query(collection(requireDb(), 'weightEntries'), where('uid', '==', uid));
+  return onSnapshot(
+    q,
+    (snap) => {
+      const entries: WeightEntry[] = [];
+      snap.forEach((s) => {
+        const data = s.data() as Omit<WeightEntry, 'id'>;
+        entries.push({ ...data, id: s.id });
+      });
+      // Oldest first; tiebreak by createdAt so chart draws left-to-right.
+      entries.sort((a, b) => {
+        if (a.date !== b.date) return a.date.localeCompare(b.date);
+        return a.createdAt - b.createdAt;
+      });
+      onChange(entries);
+    },
+    (err) => {
+      console.error('[weights:subscribe] failed', err);
+      onError?.(err);
+    }
+  );
+}
+
+export async function addWeightEntry(entry: Omit<WeightEntry, 'id'>): Promise<string> {
+  const ref = await addDoc(collection(requireDb(), 'weightEntries'), entry);
+  return ref.id;
+}
+
+export async function deleteWeightEntry(id: string): Promise<void> {
+  await deleteDoc(doc(requireDb(), 'weightEntries', id));
 }

@@ -28,5 +28,16 @@ service cloud.firestore {
                     && request.resource.data.uid == request.auth.uid;
       allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
     }
+
+    // Body-weight entries (1 record per ad-hoc measurement). Same uid-scoped
+    // ownership rule pattern as quests/completions.
+    match /weightEntries/{id} {
+      allow read:   if request.auth != null && resource.data.uid == request.auth.uid;
+      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
+      allow update: if request.auth != null
+                    && resource.data.uid == request.auth.uid
+                    && request.resource.data.uid == request.auth.uid;
+      allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
+    }
   }
 }
