@@ -5,10 +5,12 @@ import {
   subscribeQuests,
   createCharacter,
   updateCharacter,
+  deleteCharacter,
   updateQuest,
   deleteQuest,
   logCompletion,
   getCompletionsForQuest,
+  getAllCompletions,
   deleteCompletions,
 } from '../lib/firestore';
 import type {
@@ -46,6 +48,7 @@ export interface GameData {
   createCharacterWithName: (name: string) => Promise<void>;
   toggleQuest: (quest: Quest) => Promise<void>;
   removeQuestWithRefund: (quest: Quest) => Promise<void>;
+  resetAccount: () => Promise<void>;
 }
 
 function isQuestDoneToday(quest: Quest): boolean {
@@ -451,6 +454,26 @@ export function useGameData(user: User | null): GameData {
     setPendingEvents((prev) => prev.slice(1));
   }, []);
 
+  // Hard reset: wipe completions, quests, character — auth stays so the user
+  // lands back on the character-creation screen without re-login.
+  const resetAccount = useCallback(async (): Promise<void> => {
+    if (!user) return;
+    // Delete completion log entries in chunks-of-Promise.all
+    const completions = await getAllCompletions(user.uid);
+    if (completions.length) {
+      await deleteCompletions(completions.map((c) => c.id));
+    }
+    // Delete every quest doc
+    await Promise.all(quests.map((q) => deleteQuest(q.id)));
+    // Delete the character doc itself
+    await deleteCharacter(user.uid);
+
+    setCharacter(null);
+    setQuests([]);
+    setNeedsCharacter(true);
+    setPendingEvents([]);
+  }, [user, quests]);
+
   return {
     character,
     quests,
@@ -462,6 +485,7 @@ export function useGameData(user: User | null): GameData {
     createCharacterWithName,
     toggleQuest,
     removeQuestWithRefund,
+    resetAccount,
   };
 }
 

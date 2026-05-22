@@ -7,11 +7,12 @@ import { SystemToast } from './SystemToast';
 import { HistoryPanel } from './HistoryPanel';
 import { AchievementsPanel } from './AchievementsPanel';
 import { SkillsPanel } from './SkillsPanel';
+import { ResetAccountModal } from './ResetAccountModal';
 import { SystemWindow } from './SystemWindow';
 import { isQuestDoneToday, useGameData } from '../hooks/useGameData';
 import { createQuest } from '../lib/firestore';
 import type { Character } from '../types';
-import { Award, History, LogOut, Plus, ScrollText, Sparkles } from 'lucide-react';
+import { Award, History, LogOut, Plus, RotateCcw, ScrollText, Sparkles } from 'lucide-react';
 
 interface Props {
   user: User;
@@ -25,6 +26,7 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [achOpen, setAchOpen] = useState(false);
   const [skillsOpen, setSkillsOpen] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
 
   const [active, archived] = useMemo(() => {
     const a = game.quests.filter((q) => !q.archived);
@@ -80,7 +82,11 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
                 {(character.unlocked?.skills ?? []).length}
               </span>
             </button>
-            <button type="button" className="sys-button sys-button-danger" onClick={onSignOut}>
+            <button type="button" className="sys-button sys-button-danger" onClick={() => setResetOpen(true)}>
+              <RotateCcw className="h-4 w-4" />
+              リセット
+            </button>
+            <button type="button" className="sys-button" onClick={onSignOut}>
               <LogOut className="h-4 w-4" />
               ログアウト
             </button>
@@ -209,6 +215,13 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
       <HistoryPanel open={historyOpen} uid={user.uid} quests={game.quests} onClose={() => setHistoryOpen(false)} />
       <AchievementsPanel open={achOpen} character={character} onClose={() => setAchOpen(false)} />
       <SkillsPanel open={skillsOpen} character={character} onClose={() => setSkillsOpen(false)} />
+      <ResetAccountModal
+        open={resetOpen}
+        character={character}
+        quests={game.quests}
+        onClose={() => setResetOpen(false)}
+        onConfirm={() => game.resetAccount()}
+      />
     </div>
   );
 }

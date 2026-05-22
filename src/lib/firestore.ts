@@ -50,6 +50,10 @@ export async function updateCharacter(uid: string, patch: Partial<Character>): P
   await updateDoc(doc(requireDb(), 'characters', uid), patch as Record<string, unknown>);
 }
 
+export async function deleteCharacter(uid: string): Promise<void> {
+  await deleteDoc(doc(requireDb(), 'characters', uid));
+}
+
 export function subscribeQuests(
   uid: string,
   onChange: (quests: Quest[]) => void,
