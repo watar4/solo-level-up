@@ -1,6 +1,7 @@
 import type { Quest } from '../types';
 import { DIFFICULTY_EXP, STAT_LABELS } from '../types';
-import { Check, Flame, Trash2 } from 'lucide-react';
+import { daysUntilWeekReset, effectiveStreak, todayKey, yesterdayKey } from '../lib/leveling';
+import { Check, Clock, Flame, Trash2 } from 'lucide-react';
 
 interface Props {
   quest: Quest;
@@ -27,6 +28,19 @@ const TYPE_LABEL: Record<Quest['type'], string> = {
 
 export function QuestCard({ quest, doneToday, busy, onToggle, onDelete }: Props) {
   const expReward = DIFFICULTY_EXP[quest.difficulty];
+  // Re-derive streak from completedDates so it expires automatically when the
+  // user skips a day, instead of showing the stale value stored in Firestore.
+  const liveStreak = effectiveStreak(quest.completedDates, quest.type);
+  const streakBroken =
+    quest.type === 'daily' &&
+    quest.streak > 0 &&
+    liveStreak === 0;
+  const streakAtRisk =
+    quest.type === 'daily' &&
+    liveStreak > 0 &&
+    !quest.completedDates.includes(todayKey()) &&
+    quest.completedDates.includes(yesterdayKey());
+  const weekResetDays = quest.type === 'weekly' ? daysUntilWeekReset() : null;
 
   return (
     <div
@@ -78,12 +92,38 @@ export function QuestCard({ quest, doneToday, busy, onToggle, onDelete }: Props)
           {quest.description && (
             <p className="mt-1 text-xs text-sys-muted">{quest.description}</p>
           )}
-          {quest.type === 'daily' && quest.streak > 0 && (
-            <div className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-sys-gold">
-              <Flame className="h-3 w-3" />
-              {quest.streak}日連続
-            </div>
-          )}
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
+            {quest.type === 'daily' && liveStreak > 0 && (
+              <span
+                className={`inline-flex items-center gap-1 ${
+                  streakAtRisk ? 'text-sys-danger' : 'text-sys-gold'
+                }`}
+                title={streakAtRisk ? '今日達成しないと連続記録が途切れます' : undefined}
+              >
+                <Flame className="h-3 w-3" />
+                {liveStreak}日連続{streakAtRisk && ' (残り今日中!)'}
+              </span>
+            )}
+            {streakBroken && (
+              <span
+                className="inline-flex items-center gap-1 text-sys-muted"
+                title={`記録上は ${quest.streak} 日連続でしたが途切れました`}
+              >
+                <Flame className="h-3 w-3 opacity-40" />
+                連続記録 途切れ
+              </span>
+            )}
+            {weekResetDays !== null && (
+              <span
+                className={`inline-flex items-center gap-1 ${
+                  doneToday ? 'text-sys-muted' : 'text-sys-text/70'
+                }`}
+              >
+                <Clock className="h-3 w-3" />
+                {doneToday ? `次回まで残り ${weekResetDays} 日` : `今週中: あと ${weekResetDays} 日`}
+              </span>
+            )}
+          </div>
         </div>
 
         <button

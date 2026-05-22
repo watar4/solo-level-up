@@ -3,12 +3,15 @@ import type { User } from 'firebase/auth';
 import { StatusPanel } from './StatusPanel';
 import { QuestCard } from './QuestCard';
 import { AddQuestModal } from './AddQuestModal';
-import { LevelUpToast } from './LevelUpToast';
+import { SystemToast } from './SystemToast';
+import { HistoryPanel } from './HistoryPanel';
+import { AchievementsPanel } from './AchievementsPanel';
+import { SkillsPanel } from './SkillsPanel';
 import { SystemWindow } from './SystemWindow';
 import { isQuestDoneToday, useGameData } from '../hooks/useGameData';
 import { createQuest } from '../lib/firestore';
 import type { Character } from '../types';
-import { LogOut, Plus, ScrollText } from 'lucide-react';
+import { Award, History, LogOut, Plus, ScrollText, Sparkles } from 'lucide-react';
 
 interface Props {
   user: User;
@@ -19,6 +22,9 @@ interface Props {
 
 export function Dashboard({ user, character, game, onSignOut }: Props) {
   const [modalOpen, setModalOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [achOpen, setAchOpen] = useState(false);
+  const [skillsOpen, setSkillsOpen] = useState(false);
 
   const [active, archived] = useMemo(() => {
     const a = game.quests.filter((q) => !q.archived);
@@ -55,14 +61,30 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
               LEVEL UP
             </h1>
           </div>
-          <button
-            type="button"
-            className="sys-button sys-button-danger"
-            onClick={onSignOut}
-          >
-            <LogOut className="h-4 w-4" />
-            ログアウト
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" className="sys-button" onClick={() => setHistoryOpen(true)}>
+              <History className="h-4 w-4" />
+              履歴
+            </button>
+            <button type="button" className="sys-button" onClick={() => setAchOpen(true)}>
+              <Award className="h-4 w-4" />
+              実績
+              <span className="ml-1 text-[10px] font-mono text-sys-gold">
+                {(character.unlocked?.achievements ?? []).length}
+              </span>
+            </button>
+            <button type="button" className="sys-button" onClick={() => setSkillsOpen(true)}>
+              <Sparkles className="h-4 w-4" />
+              スキル
+              <span className="ml-1 text-[10px] font-mono text-purple-300">
+                {(character.unlocked?.skills ?? []).length}
+              </span>
+            </button>
+            <button type="button" className="sys-button sys-button-danger" onClick={onSignOut}>
+              <LogOut className="h-4 w-4" />
+              ログアウト
+            </button>
+          </div>
         </header>
 
         <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
@@ -183,7 +205,10 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
         }}
       />
 
-      <LevelUpToast event={game.lastLevelUp} onDismiss={game.clearLevelUp} />
+      <SystemToast event={game.pendingEvents[0] ?? null} onDismiss={game.popEvent} />
+      <HistoryPanel open={historyOpen} uid={user.uid} quests={game.quests} onClose={() => setHistoryOpen(false)} />
+      <AchievementsPanel open={achOpen} character={character} onClose={() => setAchOpen(false)} />
+      <SkillsPanel open={skillsOpen} character={character} onClose={() => setSkillsOpen(false)} />
     </div>
   );
 }

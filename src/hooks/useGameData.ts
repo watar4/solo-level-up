@@ -11,8 +11,14 @@ import {
   getCompletionsForQuest,
   deleteCompletions,
 } from '../lib/firestore';
-import type { Character, LevelUpEvent, Quest, StatKey } from '../types';
-import { DIFFICULTY_EXP } from '../types';
+import type {
+  Character,
+  Quest,
+  StatKey,
+  SystemEvent,
+  UnlockState,
+} from '../types';
+import { DIFFICULTY_EXP, EMPTY_UNLOCK } from '../types';
 import {
   applyExp,
   levelFromTotalExp,
@@ -22,15 +28,21 @@ import {
   thisWeekKey,
   previousDayKey,
 } from '../lib/leveling';
+import {
+  buildAchievementContext,
+  newlyUnlockedAchievements,
+  type AchievementDef,
+} from '../lib/achievements';
+import { newlyUnlockedSkills, type SkillDef } from '../lib/skills';
 
 export interface GameData {
   character: Character | null;
   quests: Quest[];
   loading: boolean;
   needsCharacter: boolean;
-  lastLevelUp: LevelUpEvent | null;
   busyQuestId: string | null;
-  clearLevelUp: () => void;
+  pendingEvents: SystemEvent[];
+  popEvent: () => void;
   createCharacterWithName: (name: string) => Promise<void>;
   toggleQuest: (quest: Quest) => Promise<void>;
   removeQuestWithRefund: (quest: Quest) => Promise<void>;
@@ -54,15 +66,11 @@ const STAT_PER_DIFFICULTY: Record<string, number> = {
   S: 8,
 };
 
-// Streak multiplier identical to the one used at completion time, so refunding
-// uses the same number of EXP that was awarded.
 function streakMultiplier(type: Quest['type'], streak: number): number {
   if (type !== 'daily') return 1;
   return Math.min(2, 1 + 0.1 * Math.max(0, streak - 1));
 }
 
-// Re-derive streak by walking backwards from yesterday through the remaining
-// completion dates. Pure function — no Firestore reads needed.
 function recomputeStreak(type: Quest['type'], remainingDates: string[]): number {
   if (type !== 'daily') return 0;
   const set = new Set(remainingDates);
@@ -75,13 +83,89 @@ function recomputeStreak(type: Quest['type'], remainingDates: string[]): number 
   return count;
 }
 
+function ensureUnlocked(c: Character): UnlockState {
+  return c.unlocked ?? EMPTY_UNLOCK;
+}
+
+function achievementEvent(a: AchievementDef): SystemEvent {
+  return {
+    id: `achievement:${a.id}:${Date.now()}`,
+    kind: 'achievement',
+    title: '称号獲得',
+    primary: a.name,
+    secondary: a.description,
+    icon: a.icon,
+    accent: 'gold',
+  };
+}
+
+function skillEvent(s: SkillDef): SystemEvent {
+  return {
+    id: `skill:${s.id}:${Date.now()}`,
+    kind: 'skill',
+    title: 'スキル解放',
+    primary: s.name,
+    secondary: s.description,
+    icon: s.icon,
+    accent: 'purple',
+  };
+}
+
+// Evaluate achievements + skills against the given character/quest state.
+// Returns the patched character + the events to enqueue. Pure — caller persists.
+function evaluateUnlocks(character: Character, quests: Quest[]): {
+  patched: Character;
+  events: SystemEvent[];
+} {
+  const ctx = buildAchievementContext(character, quests);
+  const newAchievements = newlyUnlockedAchievements(ctx);
+  const newSkills = newlyUnlockedSkills(character, quests);
+  if (!newAchievements.length && !newSkills.length) {
+    return { patched: character, events: [] };
+  }
+
+  const unlock = ensureUnlocked(character);
+  const now = Date.now();
+  const achievements = [...unlock.achievements, ...newAchievements.map((a) => a.id)];
+  const skills = [...unlock.skills, ...newSkills.map((s) => s.id)];
+  const achievementDates = { ...unlock.achievementDates };
+  const skillDates = { ...unlock.skillDates };
+  let extraStatPoints = 0;
+  let title = character.title;
+  for (const a of newAchievements) {
+    achievementDates[a.id] = now;
+    if (a.reward?.statPoints) extraStatPoints += a.reward.statPoints;
+    if (a.reward?.title) title = a.reward.title;
+  }
+  for (const s of newSkills) {
+    skillDates[s.id] = now;
+  }
+
+  const patched: Character = {
+    ...character,
+    unlocked: { achievements, achievementDates, skills, skillDates },
+    statPoints: character.statPoints + extraStatPoints,
+    title,
+  };
+
+  const events: SystemEvent[] = [
+    ...newAchievements.map(achievementEvent),
+    ...newSkills.map(skillEvent),
+  ];
+  return { patched, events };
+}
+
 export function useGameData(user: User | null): GameData {
   const [character, setCharacter] = useState<Character | null>(null);
   const [quests, setQuests] = useState<Quest[]>([]);
   const [loading, setLoading] = useState(true);
   const [needsCharacter, setNeedsCharacter] = useState(false);
-  const [lastLevelUp, setLastLevelUp] = useState<LevelUpEvent | null>(null);
+  const [pendingEvents, setPendingEvents] = useState<SystemEvent[]>([]);
   const [busyQuestId, setBusyQuestId] = useState<string | null>(null);
+
+  const enqueue = useCallback((events: SystemEvent[]) => {
+    if (events.length) setPendingEvents((prev) => [...prev, ...events]);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -114,6 +198,23 @@ export function useGameData(user: User | null): GameData {
     return subscribeQuests(user.uid, setQuests);
   }, [user]);
 
+  // Retroactively check for unlocks whenever character or quests change.
+  // Runs after both have loaded; only persists when something actually changes.
+  useEffect(() => {
+    if (!user || !character || !quests.length) return;
+    const { patched, events } = evaluateUnlocks(character, quests);
+    if (events.length) {
+      setCharacter(patched);
+      enqueue(events);
+      updateCharacter(user.uid, {
+        unlocked: patched.unlocked,
+        statPoints: patched.statPoints,
+        title: patched.title,
+      }).catch((err) => console.error('Failed to persist unlocks', err));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, character?.uid, quests.length]);
+
   const createCharacterWithName = useCallback(
     async (name: string) => {
       if (!user) return;
@@ -124,7 +225,6 @@ export function useGameData(user: User | null): GameData {
     [user]
   );
 
-  // Complete-today path: award EXP, bump stat, possibly level up, log it.
   const completeQuest = useCallback(
     async (quest: Quest): Promise<void> => {
       if (!user || !character) return;
@@ -145,7 +245,7 @@ export function useGameData(user: User | null): GameData {
         ...character.stats,
         [quest.targetStat]: character.stats[quest.targetStat] + statGain,
       };
-      const updated: Character = {
+      let updated: Character = {
         ...character,
         level: exp.level,
         exp: exp.exp,
@@ -155,12 +255,53 @@ export function useGameData(user: User | null): GameData {
         lastSeenAt: Date.now(),
       };
 
+      // Reflect quest's new state in the in-memory copy used for evaluation.
+      const updatedQuest: Quest = {
+        ...quest,
+        completedDates: [...quest.completedDates, today],
+        streak: newStreak,
+        lastCompletedAt: Date.now(),
+        archived: quest.type === 'one-time' ? true : quest.archived ?? false,
+      };
+      const updatedQuests = quests.map((q) => (q.id === quest.id ? updatedQuest : q));
+
+      // Evaluate unlocks against the post-completion state.
+      const { patched, events } = evaluateUnlocks(updated, updatedQuests);
+      updated = patched;
+
+      const eventsAll: SystemEvent[] = [];
+      if (exp.levelsGained > 0) {
+        eventsAll.push({
+          id: `level-up:${Date.now()}`,
+          kind: 'level-up',
+          title: 'Level Up!',
+          primary: `Lv.${oldLevel} → Lv.${exp.level}`,
+          secondary: `+${exp.statPointsGained} ステータスポイント`,
+          icon: '⭐',
+          accent: 'cyan',
+        });
+        const oldRank = rankForLevel(oldLevel);
+        const newRank = rankForLevel(exp.level);
+        if (oldRank !== newRank) {
+          eventsAll.push({
+            id: `rank-up:${Date.now()}`,
+            kind: 'level-up',
+            title: 'ランクアップ',
+            primary: `${oldRank}  →  ${newRank}`,
+            secondary: `あなたは ${newRank} ランクハンターに昇格した`,
+            icon: '🏅',
+            accent: 'gold',
+          });
+        }
+      }
+      eventsAll.push(...events);
+
       await Promise.all([
         updateQuest(quest.id, {
-          completedDates: [...quest.completedDates, today],
-          streak: newStreak,
-          lastCompletedAt: Date.now(),
-          archived: quest.type === 'one-time' ? true : quest.archived ?? false,
+          completedDates: updatedQuest.completedDates,
+          streak: updatedQuest.streak,
+          lastCompletedAt: updatedQuest.lastCompletedAt,
+          archived: updatedQuest.archived,
         }),
         updateCharacter(user.uid, {
           level: updated.level,
@@ -169,37 +310,23 @@ export function useGameData(user: User | null): GameData {
           stats: updated.stats,
           statPoints: updated.statPoints,
           lastSeenAt: updated.lastSeenAt,
+          unlocked: updated.unlocked,
+          title: updated.title,
         }),
         logCompletion(user.uid, quest.id, expGained, today),
       ]);
 
       setCharacter(updated);
-
-      if (exp.levelsGained > 0) {
-        setLastLevelUp({
-          fromLevel: oldLevel,
-          toLevel: updated.level,
-          statPointsGained: exp.statPointsGained,
-          newRank:
-            rankForLevel(oldLevel) !== rankForLevel(updated.level)
-              ? rankForLevel(updated.level)
-              : undefined,
-        });
-      }
+      enqueue(eventsAll);
     },
-    [user, character]
+    [user, character, quests, enqueue]
   );
 
-  // Uncheck-today path: refund EXP + stat using the same formula that awarded
-  // them, recompute streak from the remaining dates, delete today's completion
-  // log entries.
   const uncompleteQuest = useCallback(
     async (quest: Quest): Promise<void> => {
       if (!user || !character) return;
       const today = todayKey();
       const baseExp = DIFFICULTY_EXP[quest.difficulty];
-      // The current quest.streak is the streak that was applied at completion,
-      // so it tells us exactly how much EXP to refund.
       const expRefund = Math.round(baseExp * streakMultiplier(quest.type, quest.streak));
       const statRefund = STAT_PER_DIFFICULTY[quest.difficulty] ?? 1;
 
@@ -208,15 +335,13 @@ export function useGameData(user: User | null): GameData {
 
       const newTotalExp = Math.max(0, character.totalExp - expRefund);
       const { level: newLevel, exp: newExp } = levelFromTotalExp(newTotalExp);
-      const levelDiff = newLevel - character.level; // negative or zero
+      const levelDiff = newLevel - character.level;
       const newStats: Record<StatKey, number> = {
         ...character.stats,
         [quest.targetStat]: Math.max(0, character.stats[quest.targetStat] - statRefund),
       };
       const newStatPoints = Math.max(0, character.statPoints + levelDiff * 5);
 
-      // Wipe today's completion log entry(ies). Old entries (pre date-field)
-      // will simply not match and stay — harmless for history.
       const logs = await getCompletionsForQuest(user.uid, quest.id);
       const todaysLogIds = logs.filter((l) => l.date === today).map((l) => l.id);
 
@@ -270,8 +395,6 @@ export function useGameData(user: User | null): GameData {
     [busyQuestId, completeQuest, uncompleteQuest]
   );
 
-  // Delete a quest AND refund every EXP/stat it ever granted. Level is
-  // recomputed from the resulting lifetime EXP — keeps the books balanced.
   const removeQuestWithRefund = useCallback(
     async (quest: Quest): Promise<void> => {
       if (!user || !character) {
@@ -324,16 +447,18 @@ export function useGameData(user: User | null): GameData {
     [user, character, busyQuestId]
   );
 
-  const clearLevelUp = useCallback(() => setLastLevelUp(null), []);
+  const popEvent = useCallback(() => {
+    setPendingEvents((prev) => prev.slice(1));
+  }, []);
 
   return {
     character,
     quests,
     loading,
     needsCharacter,
-    lastLevelUp,
     busyQuestId,
-    clearLevelUp,
+    pendingEvents,
+    popEvent,
     createCharacterWithName,
     toggleQuest,
     removeQuestWithRefund,

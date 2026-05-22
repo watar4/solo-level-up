@@ -98,3 +98,29 @@ export function thisWeekKey(): string {
   const weekNo = Math.ceil(((target.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
   return `${target.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
 }
+
+// Days until the next ISO week starts (next Monday). If today is Monday, returns 7.
+export function daysUntilWeekReset(): number {
+  const day = new Date().getDay();          // 0=Sun .. 6=Sat
+  const isoDay = day === 0 ? 7 : day;       // 1..7 with Sun=7
+  const remaining = (8 - isoDay) % 7;
+  return remaining === 0 ? 7 : remaining;
+}
+
+// Effective daily-quest streak based purely on completedDates.
+// Returns 0 once today AND yesterday are both missing — i.e. the streak has
+// expired even if the stored `streak` field still says 5.
+export function effectiveStreak(completedDates: string[], type: 'daily' | 'weekly' | 'one-time'): number {
+  if (type !== 'daily') return 0;
+  const set = new Set(completedDates);
+  const today = todayKey();
+  const yest = yesterdayKey();
+  if (!set.has(today) && !set.has(yest)) return 0;
+  let cursor = set.has(today) ? today : yest;
+  let count = 0;
+  while (set.has(cursor)) {
+    count++;
+    cursor = previousDayKey(cursor);
+  }
+  return count;
+}

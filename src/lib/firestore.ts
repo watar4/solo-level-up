@@ -130,6 +130,34 @@ export async function getCompletionsForQuest(
   });
 }
 
+export interface CompletionLogRich {
+  id: string;
+  questId: string;
+  expGained: number;
+  date?: string;
+  at?: number;
+}
+
+export async function getAllCompletions(uid: string): Promise<CompletionLogRich[]> {
+  const q = query(collection(requireDb(), 'completions'), where('uid', '==', uid));
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => {
+    const data = d.data() as {
+      questId?: string;
+      expGained?: number;
+      date?: string;
+      at?: { seconds: number };
+    };
+    return {
+      id: d.id,
+      questId: data.questId ?? '',
+      expGained: data.expGained ?? 0,
+      date: data.date,
+      at: data.at ? data.at.seconds * 1000 : undefined,
+    };
+  });
+}
+
 export async function deleteCompletions(ids: string[]): Promise<void> {
   await Promise.all(ids.map((id) => deleteDoc(doc(requireDb(), 'completions', id))));
 }
