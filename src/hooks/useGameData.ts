@@ -58,6 +58,7 @@ export interface GameData {
   removeQuestWithRefund: (quest: Quest) => Promise<void>;
   editQuest: (quest: Quest, patch: QuestEditPatch) => Promise<void>;
   moveQuest: (quest: Quest, direction: 'up' | 'down') => Promise<void>;
+  reorderActive: (from: number, to: number) => Promise<void>;
   resetAccount: () => Promise<void>;
 }
 
@@ -497,6 +498,32 @@ export function useGameData(user: User | null): GameData {
     [quests]
   );
 
+  // Generic arbitrary reorder, used by drag-and-drop. `from` and `to` are
+  // indices into the active (non-archived) list.
+  const reorderActive = useCallback(
+    async (from: number, to: number): Promise<void> => {
+      const active = quests.filter((q) => !q.archived);
+      if (
+        from === to ||
+        from < 0 ||
+        to < 0 ||
+        from >= active.length ||
+        to >= active.length
+      ) {
+        return;
+      }
+      const reordered = [...active];
+      const [moved] = reordered.splice(from, 1);
+      reordered.splice(to, 0, moved);
+      await Promise.all(
+        reordered.map((q, i) =>
+          q.order === i ? Promise.resolve() : updateQuest(q.id, { order: i })
+        )
+      );
+    },
+    [quests]
+  );
+
   const popEvent = useCallback(() => {
     setPendingEvents((prev) => prev.slice(1));
   }, []);
@@ -534,6 +561,7 @@ export function useGameData(user: User | null): GameData {
     removeQuestWithRefund,
     editQuest,
     moveQuest,
+    reorderActive,
     resetAccount,
   };
 }

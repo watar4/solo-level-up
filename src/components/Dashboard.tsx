@@ -1,7 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { User } from 'firebase/auth';
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  TouchSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from '@dnd-kit/core';
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { StatusPanel } from './StatusPanel';
 import { QuestCard } from './QuestCard';
+import { SortableQuestCard } from './SortableQuestCard';
 import { AddQuestModal } from './AddQuestModal';
 import { QuestActionSheet } from './QuestActionSheet';
 import { SystemToast } from './SystemToast';
@@ -52,6 +65,7 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
   const [skillsOpen, setSkillsOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [actionSheet, setActionSheet] = useState<ActionSheetState | null>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
 
   const [active, archived] = useMemo(() => {
     const a = game.quests.filter((q) => !q.archived);
@@ -104,6 +118,42 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
     }
     void game.moveQuest(q, 'down');
   };
+
+  // Drag-to-reorder: long-press on touch (50ms), small-move on mouse.
+  // Sensors are configured so a normal tap/click still flows to the checkbox
+  // and the ⋮ button without spuriously triggering a drag.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 50, tolerance: 8 },
+    })
+  );
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setDraggingId(event.active.id as string);
+    // Short haptic blip on devices that support it — confirms the long-press
+    // crossed the activation threshold without needing the eye to catch the
+    // visual lift first.
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      navigator.vibrate(15);
+    }
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    setDraggingId(null);
+    const { active: a, over } = event;
+    if (!over || a.id === over.id) return;
+    const from = active.findIndex((q) => q.id === a.id);
+    const to = active.findIndex((q) => q.id === over.id);
+    if (from < 0 || to < 0) return;
+    void game.reorderActive(from, to);
+  };
+
+  const handleDragCancel = () => setDraggingId(null);
+
+  const draggingQuest = draggingId
+    ? active.find((q) => q.id === draggingId) ?? null
+    : null;
 
   return (
     <div className="min-h-screen px-4 py-6 md:py-10">
@@ -165,30 +215,68 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
               </button>
             </div>
 
-            <div className="space-y-2">
-              {active.length === 0 ? (
-                <div className="border border-dashed border-sys-border/30 px-4 py-10 text-center text-sm text-sys-muted">
-                  まだクエストがありません。<br />
-                  「発行」から最初のミッションを登録しましょう。
-                </div>
-              ) : (
-                visible.map((q, viewIdx) => {
-                  const fullIdx = visibleStart + viewIdx;
-                  return (
-                    <QuestCard
-                      key={q.id}
-                      quest={q}
-                      doneToday={isQuestDoneToday(q)}
-                      busy={game.busyQuestId === q.id}
-                      onToggle={() => game.toggleQuest(q)}
-                      onOpenMenu={() =>
-                        setActionSheet({ quest: q, fullIdx, isArchived: false })
-                      }
-                    />
-                  );
-                })
-              )}
-            </div>
+            {active.length === 0 ? (
+              <div className="border border-dashed border-sys-border/30 px-4 py-10 text-center text-sm text-sys-muted">
+                まだクエストがありません。<br />
+                「発行」から最初のミッションを登録しましょう。
+              </div>
+            ) : (
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragStart={handleDragStart}
+                onDragEnd={handleDragEnd}
+                onDragCancel={handleDragCancel}
+              >
+                <SortableContext
+                  items={visible.map((q) => q.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <div className="space-y-2">
+                    {visible.map((q, viewIdx) => {
+                      const fullIdx = visibleStart + viewIdx;
+                      return (
+                        <SortableQuestCard
+                          key={q.id}
+                          quest={q}
+                          doneToday={isQuestDoneToday(q)}
+                          busy={game.busyQuestId === q.id}
+                          onToggle={() => game.toggleQuest(q)}
+                          onOpenMenu={() =>
+                            setActionSheet({ quest: q, fullIdx, isArchived: false })
+                          }
+                        />
+                      );
+                    })}
+                  </div>
+                </SortableContext>
+                <DragOverlay dropAnimation={null}>
+                  {draggingQuest && (
+                    <div
+                      style={{
+                        transform: 'scale(1.06)',
+                        boxShadow:
+                          '0 24px 50px rgba(0,0,0,0.6), 0 0 28px rgba(0,212,255,0.6)',
+                        filter: 'brightness(1.12)',
+                        cursor: 'grabbing',
+                      }}
+                    >
+                      <QuestCard
+                        quest={draggingQuest}
+                        doneToday={isQuestDoneToday(draggingQuest)}
+                        onToggle={() => {}}
+                      />
+                    </div>
+                  )}
+                </DragOverlay>
+              </DndContext>
+            )}
+
+            {active.length > 0 && (
+              <p className="mt-2 text-[10px] text-sys-muted/70 text-center">
+                長押しでドラッグして並び替え · タップで完了
+              </p>
+            )}
 
             {paginate && (
               <div className="mt-3 flex items-center justify-center gap-3 border-t border-sys-border/20 pt-3">
