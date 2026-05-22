@@ -6,16 +6,21 @@ import {
   createCharacter,
   updateCharacter,
   updateQuest,
+  deleteQuest,
   logCompletion,
+  getCompletionsForQuest,
+  deleteCompletions,
 } from '../lib/firestore';
 import type { Character, LevelUpEvent, Quest, StatKey } from '../types';
 import { DIFFICULTY_EXP } from '../types';
 import {
   applyExp,
+  levelFromTotalExp,
   rankForLevel,
   todayKey,
   yesterdayKey,
   thisWeekKey,
+  previousDayKey,
 } from '../lib/leveling';
 
 export interface GameData {
@@ -24,19 +29,50 @@ export interface GameData {
   loading: boolean;
   needsCharacter: boolean;
   lastLevelUp: LevelUpEvent | null;
+  busyQuestId: string | null;
   clearLevelUp: () => void;
   createCharacterWithName: (name: string) => Promise<void>;
-  completeQuest: (quest: Quest) => Promise<void>;
+  toggleQuest: (quest: Quest) => Promise<void>;
+  removeQuestWithRefund: (quest: Quest) => Promise<void>;
 }
 
 function isQuestDoneToday(quest: Quest): boolean {
   if (quest.type === 'daily') return quest.completedDates.includes(todayKey());
   if (quest.type === 'weekly') {
     const wk = thisWeekKey();
-    // Reuse the "completedDates" field for weeks too.
     return quest.completedDates.some((d) => d.startsWith(wk));
   }
   return quest.completedDates.length > 0;
+}
+
+const STAT_PER_DIFFICULTY: Record<string, number> = {
+  E: 1,
+  D: 1,
+  C: 2,
+  B: 3,
+  A: 5,
+  S: 8,
+};
+
+// Streak multiplier identical to the one used at completion time, so refunding
+// uses the same number of EXP that was awarded.
+function streakMultiplier(type: Quest['type'], streak: number): number {
+  if (type !== 'daily') return 1;
+  return Math.min(2, 1 + 0.1 * Math.max(0, streak - 1));
+}
+
+// Re-derive streak by walking backwards from yesterday through the remaining
+// completion dates. Pure function — no Firestore reads needed.
+function recomputeStreak(type: Quest['type'], remainingDates: string[]): number {
+  if (type !== 'daily') return 0;
+  const set = new Set(remainingDates);
+  let cursor = yesterdayKey();
+  let count = 0;
+  while (set.has(cursor)) {
+    count++;
+    cursor = previousDayKey(cursor);
+  }
+  return count;
 }
 
 export function useGameData(user: User | null): GameData {
@@ -45,8 +81,8 @@ export function useGameData(user: User | null): GameData {
   const [loading, setLoading] = useState(true);
   const [needsCharacter, setNeedsCharacter] = useState(false);
   const [lastLevelUp, setLastLevelUp] = useState<LevelUpEvent | null>(null);
+  const [busyQuestId, setBusyQuestId] = useState<string | null>(null);
 
-  // Load character whenever the signed-in user changes.
   useEffect(() => {
     let cancelled = false;
     if (!user) {
@@ -73,7 +109,6 @@ export function useGameData(user: User | null): GameData {
     };
   }, [user]);
 
-  // Subscribe to quest changes once we know who the user is.
   useEffect(() => {
     if (!user) return;
     return subscribeQuests(user.uid, setQuests);
@@ -89,11 +124,10 @@ export function useGameData(user: User | null): GameData {
     [user]
   );
 
+  // Complete-today path: award EXP, bump stat, possibly level up, log it.
   const completeQuest = useCallback(
-    async (quest: Quest) => {
+    async (quest: Quest): Promise<void> => {
       if (!user || !character) return;
-      if (isQuestDoneToday(quest)) return;
-
       const today = todayKey();
       const baseExp = DIFFICULTY_EXP[quest.difficulty];
       const newStreak =
@@ -102,14 +136,8 @@ export function useGameData(user: User | null): GameData {
             ? quest.streak + 1
             : 1
           : quest.streak;
-      // 10% bonus per streak day, capped at +100%.
-      const streakMultiplier =
-        quest.type === 'daily' ? Math.min(2, 1 + 0.1 * Math.max(0, newStreak - 1)) : 1;
-      const expGained = Math.round(baseExp * streakMultiplier);
-
-      // Stat reward: small bump proportional to difficulty.
-      const statGain =
-        { E: 1, D: 1, C: 2, B: 3, A: 5, S: 8 }[quest.difficulty] ?? 1;
+      const expGained = Math.round(baseExp * streakMultiplier(quest.type, newStreak));
+      const statGain = STAT_PER_DIFFICULTY[quest.difficulty] ?? 1;
 
       const oldLevel = character.level;
       const exp = applyExp(character.level, character.exp, character.totalExp, expGained);
@@ -127,7 +155,6 @@ export function useGameData(user: User | null): GameData {
         lastSeenAt: Date.now(),
       };
 
-      // Persist quest progress, character state, and a completion log entry.
       await Promise.all([
         updateQuest(quest.id, {
           completedDates: [...quest.completedDates, today],
@@ -143,7 +170,7 @@ export function useGameData(user: User | null): GameData {
           statPoints: updated.statPoints,
           lastSeenAt: updated.lastSeenAt,
         }),
-        logCompletion(user.uid, quest.id, expGained),
+        logCompletion(user.uid, quest.id, expGained, today),
       ]);
 
       setCharacter(updated);
@@ -163,6 +190,140 @@ export function useGameData(user: User | null): GameData {
     [user, character]
   );
 
+  // Uncheck-today path: refund EXP + stat using the same formula that awarded
+  // them, recompute streak from the remaining dates, delete today's completion
+  // log entries.
+  const uncompleteQuest = useCallback(
+    async (quest: Quest): Promise<void> => {
+      if (!user || !character) return;
+      const today = todayKey();
+      const baseExp = DIFFICULTY_EXP[quest.difficulty];
+      // The current quest.streak is the streak that was applied at completion,
+      // so it tells us exactly how much EXP to refund.
+      const expRefund = Math.round(baseExp * streakMultiplier(quest.type, quest.streak));
+      const statRefund = STAT_PER_DIFFICULTY[quest.difficulty] ?? 1;
+
+      const newDates = quest.completedDates.filter((d) => d !== today);
+      const newStreak = recomputeStreak(quest.type, newDates);
+
+      const newTotalExp = Math.max(0, character.totalExp - expRefund);
+      const { level: newLevel, exp: newExp } = levelFromTotalExp(newTotalExp);
+      const levelDiff = newLevel - character.level; // negative or zero
+      const newStats: Record<StatKey, number> = {
+        ...character.stats,
+        [quest.targetStat]: Math.max(0, character.stats[quest.targetStat] - statRefund),
+      };
+      const newStatPoints = Math.max(0, character.statPoints + levelDiff * 5);
+
+      // Wipe today's completion log entry(ies). Old entries (pre date-field)
+      // will simply not match and stay — harmless for history.
+      const logs = await getCompletionsForQuest(user.uid, quest.id);
+      const todaysLogIds = logs.filter((l) => l.date === today).map((l) => l.id);
+
+      await Promise.all([
+        updateQuest(quest.id, {
+          completedDates: newDates,
+          streak: newStreak,
+          archived: quest.type === 'one-time' ? false : quest.archived ?? false,
+        }),
+        updateCharacter(user.uid, {
+          level: newLevel,
+          exp: newExp,
+          totalExp: newTotalExp,
+          stats: newStats,
+          statPoints: newStatPoints,
+          lastSeenAt: Date.now(),
+        }),
+        todaysLogIds.length ? deleteCompletions(todaysLogIds) : Promise.resolve(),
+      ]);
+
+      setCharacter({
+        ...character,
+        level: newLevel,
+        exp: newExp,
+        totalExp: newTotalExp,
+        stats: newStats,
+        statPoints: newStatPoints,
+        lastSeenAt: Date.now(),
+      });
+    },
+    [user, character]
+  );
+
+  const toggleQuest = useCallback(
+    async (quest: Quest): Promise<void> => {
+      if (busyQuestId) return;
+      setBusyQuestId(quest.id);
+      try {
+        if (isQuestDoneToday(quest)) {
+          await uncompleteQuest(quest);
+        } else {
+          await completeQuest(quest);
+        }
+      } catch (err) {
+        console.error('[quest:toggle] failed', err);
+        throw err;
+      } finally {
+        setBusyQuestId(null);
+      }
+    },
+    [busyQuestId, completeQuest, uncompleteQuest]
+  );
+
+  // Delete a quest AND refund every EXP/stat it ever granted. Level is
+  // recomputed from the resulting lifetime EXP — keeps the books balanced.
+  const removeQuestWithRefund = useCallback(
+    async (quest: Quest): Promise<void> => {
+      if (!user || !character) {
+        await deleteQuest(quest.id);
+        return;
+      }
+      if (busyQuestId) return;
+      setBusyQuestId(quest.id);
+      try {
+        const logs = await getCompletionsForQuest(user.uid, quest.id);
+        const expRefund = logs.reduce((sum, l) => sum + l.expGained, 0);
+        const statRefund =
+          (STAT_PER_DIFFICULTY[quest.difficulty] ?? 1) * logs.length;
+
+        const newTotalExp = Math.max(0, character.totalExp - expRefund);
+        const { level: newLevel, exp: newExp } = levelFromTotalExp(newTotalExp);
+        const levelDiff = newLevel - character.level;
+        const newStats: Record<StatKey, number> = {
+          ...character.stats,
+          [quest.targetStat]: Math.max(0, character.stats[quest.targetStat] - statRefund),
+        };
+        const newStatPoints = Math.max(0, character.statPoints + levelDiff * 5);
+
+        await Promise.all([
+          deleteQuest(quest.id),
+          updateCharacter(user.uid, {
+            level: newLevel,
+            exp: newExp,
+            totalExp: newTotalExp,
+            stats: newStats,
+            statPoints: newStatPoints,
+            lastSeenAt: Date.now(),
+          }),
+          logs.length ? deleteCompletions(logs.map((l) => l.id)) : Promise.resolve(),
+        ]);
+
+        setCharacter({
+          ...character,
+          level: newLevel,
+          exp: newExp,
+          totalExp: newTotalExp,
+          stats: newStats,
+          statPoints: newStatPoints,
+          lastSeenAt: Date.now(),
+        });
+      } finally {
+        setBusyQuestId(null);
+      }
+    },
+    [user, character, busyQuestId]
+  );
+
   const clearLevelUp = useCallback(() => setLastLevelUp(null), []);
 
   return {
@@ -171,9 +332,11 @@ export function useGameData(user: User | null): GameData {
     loading,
     needsCharacter,
     lastLevelUp,
+    busyQuestId,
     clearLevelUp,
     createCharacterWithName,
-    completeQuest,
+    toggleQuest,
+    removeQuestWithRefund,
   };
 }
 

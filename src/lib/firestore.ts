@@ -1,6 +1,7 @@
 import {
   doc,
   getDoc,
+  getDocs,
   setDoc,
   updateDoc,
   collection,
@@ -92,11 +93,43 @@ export async function deleteQuest(id: string): Promise<void> {
   await deleteDoc(doc(requireDb(), 'quests', id));
 }
 
-export async function logCompletion(uid: string, questId: string, expGained: number): Promise<void> {
+export async function logCompletion(
+  uid: string,
+  questId: string,
+  expGained: number,
+  date: string
+): Promise<void> {
   await addDoc(collection(requireDb(), 'completions'), {
     uid,
     questId,
     expGained,
+    date,
     at: serverTimestamp() as unknown as Timestamp,
   });
+}
+
+export interface CompletionLog {
+  id: string;
+  expGained: number;
+  date?: string;
+}
+
+export async function getCompletionsForQuest(
+  uid: string,
+  questId: string
+): Promise<CompletionLog[]> {
+  const q = query(
+    collection(requireDb(), 'completions'),
+    where('uid', '==', uid),
+    where('questId', '==', questId)
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => {
+    const data = d.data() as { expGained?: number; date?: string };
+    return { id: d.id, expGained: data.expGained ?? 0, date: data.date };
+  });
+}
+
+export async function deleteCompletions(ids: string[]): Promise<void> {
+  await Promise.all(ids.map((id) => deleteDoc(doc(requireDb(), 'completions', id))));
 }

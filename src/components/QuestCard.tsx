@@ -5,7 +5,8 @@ import { Check, Flame, Trash2 } from 'lucide-react';
 interface Props {
   quest: Quest;
   doneToday: boolean;
-  onComplete: () => void;
+  busy?: boolean;
+  onToggle: () => void;
   onDelete: () => void;
 }
 
@@ -24,7 +25,7 @@ const TYPE_LABEL: Record<Quest['type'], string> = {
   'one-time': '単発',
 };
 
-export function QuestCard({ quest, doneToday, onComplete, onDelete }: Props) {
+export function QuestCard({ quest, doneToday, busy, onToggle, onDelete }: Props) {
   const expReward = DIFFICULTY_EXP[quest.difficulty];
 
   return (
@@ -38,14 +39,15 @@ export function QuestCard({ quest, doneToday, onComplete, onDelete }: Props) {
       <div className="flex items-start gap-3">
         <button
           type="button"
-          onClick={onComplete}
-          disabled={doneToday}
-          aria-label={doneToday ? '達成済み' : 'クエストを完了'}
+          onClick={onToggle}
+          disabled={busy}
+          aria-label={doneToday ? 'チェックを外す' : 'クエストを完了'}
+          title={doneToday ? 'もう一度押すと未達成に戻ります' : 'クエストを完了する'}
           className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center border transition ${
             doneToday
-              ? 'border-sys-ok bg-sys-ok/30 text-sys-ok'
+              ? 'border-sys-ok bg-sys-ok/30 text-sys-ok hover:bg-sys-ok/10 hover:text-sys-ok/70'
               : 'border-sys-border/60 hover:border-sys-accent hover:bg-sys-accent/15'
-          }`}
+          } ${busy ? 'opacity-50 cursor-wait' : ''}`}
         >
           {doneToday && <Check className="h-4 w-4" />}
         </button>

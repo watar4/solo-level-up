@@ -6,7 +6,7 @@ import { AddQuestModal } from './AddQuestModal';
 import { LevelUpToast } from './LevelUpToast';
 import { SystemWindow } from './SystemWindow';
 import { isQuestDoneToday, useGameData } from '../hooks/useGameData';
-import { createQuest, deleteQuest } from '../lib/firestore';
+import { createQuest } from '../lib/firestore';
 import type { Character } from '../types';
 import { LogOut, Plus, ScrollText } from 'lucide-react';
 
@@ -25,6 +25,17 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
     const b = game.quests.filter((q) => q.archived);
     return [a, b];
   }, [game.quests]);
+
+  const handleDelete = (q: Parameters<typeof game.removeQuestWithRefund>[0]) => {
+    const count = q.completedDates.length;
+    const msg =
+      count > 0
+        ? `「${q.title}」を削除しますか?\n\nこのクエストで獲得した EXP とステータス (達成 ${count} 回分) も取り消されます。`
+        : `「${q.title}」を削除しますか?`;
+    if (window.confirm(msg)) {
+      void game.removeQuestWithRefund(q);
+    }
+  };
 
   const todayDoneCount = useMemo(
     () => active.filter((q) => isQuestDoneToday(q)).length,
@@ -110,8 +121,9 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
                     key={q.id}
                     quest={q}
                     doneToday={isQuestDoneToday(q)}
-                    onComplete={() => game.completeQuest(q)}
-                    onDelete={() => deleteQuest(q.id)}
+                    busy={game.busyQuestId === q.id}
+                    onToggle={() => game.toggleQuest(q)}
+                    onDelete={() => handleDelete(q)}
                   />
                 ))
               )}
@@ -128,8 +140,9 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
                       key={q.id}
                       quest={q}
                       doneToday={true}
-                      onComplete={() => {}}
-                      onDelete={() => deleteQuest(q.id)}
+                      busy={game.busyQuestId === q.id}
+                      onToggle={() => game.toggleQuest(q)}
+                      onDelete={() => handleDelete(q)}
                     />
                   ))}
                 </div>

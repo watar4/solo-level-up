@@ -45,6 +45,19 @@ export function applyExp(level: number, exp: number, totalExp: number, gain: num
   };
 }
 
+// Reverse of applyExp: given a target totalExp, derive level + in-level EXP.
+// Used when refunding EXP (quest delete / uncheck) so that lifetime EXP stays
+// the single source of truth and Lv comes out consistent.
+export function levelFromTotalExp(totalExp: number): { level: number; exp: number } {
+  let level = 1;
+  let remaining = Math.max(0, totalExp);
+  while (remaining >= expForLevel(level)) {
+    remaining -= expForLevel(level);
+    level += 1;
+  }
+  return { level, exp: remaining };
+}
+
 // Today as YYYY-MM-DD in the user's local timezone.
 export function todayKey(): string {
   const d = new Date();
@@ -57,10 +70,22 @@ export function todayKey(): string {
 export function yesterdayKey(): string {
   const d = new Date();
   d.setDate(d.getDate() - 1);
+  return formatDateKey(d);
+}
+
+function formatDateKey(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
+}
+
+// Given a YYYY-MM-DD date key, return the previous day's key.
+export function previousDayKey(key: string): string {
+  const [y, m, d] = key.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  date.setDate(date.getDate() - 1);
+  return formatDateKey(date);
 }
 
 // ISO week key, e.g. 2026-W21 — used to tell whether a weekly quest is done this week.
