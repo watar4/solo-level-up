@@ -125,6 +125,20 @@ export interface BossAttempt {
   createdAt: number;
 }
 
+export type ItemKind = 'weapon';
+
+export interface Item {
+  id: string;
+  uid: string;
+  kind: ItemKind;
+  templateId: string;
+  name: string;
+  stat: StatKey;        // primary stat the weapon boosts
+  rarity: ShadowRarity; // reusing shadow rarity tiers
+  equipped: boolean;
+  createdAt: number;
+}
+
 export type SystemEventKind = 'level-up' | 'achievement' | 'skill' | 'shadow' | 'boss';
 
 export interface SystemEvent {

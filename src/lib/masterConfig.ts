@@ -59,9 +59,9 @@ export function buildMasterCharacter(uid: string): Character {
   };
 }
 
-// Five legendary shadows — one per stat, all equipped. Combined with the
-// 99/99 base stats this gives the master a brutal effective stat block to
-// stress-test damage / dodge / crit caps with.
+// Three legendary shadows — one per "core" stat (STR/AGI/INT), all
+// equipped to fill the 3-slot battle party. Plus two un-equipped extras
+// (VIT/PER) so the master can swap loadout freely while testing.
 export interface MasterShadowSeed {
   uid: string;
   templateId: string;
@@ -74,6 +74,7 @@ export interface MasterShadowSeed {
 
 export function buildMasterShadows(uid: string): MasterShadowSeed[] {
   const now = Date.now();
+  const EQUIPPED_STATS: StatKey[] = ['STR', 'AGI', 'INT'];
   const out: MasterShadowSeed[] = [];
   for (const stat of ALL_STATS) {
     const template = SHADOW_TEMPLATES.find(
@@ -86,8 +87,8 @@ export function buildMasterShadows(uid: string): MasterShadowSeed[] {
       name: template.name,
       stat,
       rarity: 'legendary',
-      equipped: true,
-      createdAt: now + ALL_STATS.indexOf(stat), // unique createdAt per row
+      equipped: EQUIPPED_STATS.includes(stat),
+      createdAt: now + ALL_STATS.indexOf(stat),
     });
   }
   return out;

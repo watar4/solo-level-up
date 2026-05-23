@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react';
-import { X, Sword } from 'lucide-react';
+import { X, Sword, Zap } from 'lucide-react';
 import { SystemWindow } from './SystemWindow';
 import {
   RARITY_COLOR,
   RARITY_LABEL,
+  SHADOW_COMBAT,
   SHADOW_EQUIP_LIMIT,
-  totalShadowBonus,
 } from '../lib/shadows';
-import { ALL_STATS, STAT_LABELS } from '../types';
+import { STAT_LABELS } from '../types';
 import type { Shadow, ShadowRarity, StatKey } from '../types';
 
 interface Props {
@@ -21,15 +21,9 @@ interface Props {
 
 const RARITY_ORDER: ShadowRarity[] = ['legendary', 'epic', 'rare', 'normal'];
 
-function formatBonus(s: Shadow): string {
-  // Quick label like "STR +4" — works as a compact rarity-driven hint.
-  const map: Record<ShadowRarity, number> = {
-    normal: 1,
-    rare: 2,
-    epic: 4,
-    legendary: 7,
-  };
-  return `${s.stat} +${map[s.rarity]}`;
+function combatLine(s: Shadow): string {
+  const c = SHADOW_COMBAT[s.rarity];
+  return `${s.stat}型 · ATK ${c.attack} · 速 ${c.atbSpeed}`;
 }
 
 export function ShadowArmyPanel({
@@ -59,8 +53,6 @@ export function ShadowArmyPanel({
     }
     return m;
   }, [shadows]);
-
-  const bonus = useMemo(() => totalShadowBonus(shadows), [shadows]);
 
   const handleEquip = async (id: string) => {
     if (busyId) return;
@@ -112,29 +104,18 @@ export function ShadowArmyPanel({
             </button>
           </div>
 
-          <div className="mb-4 border border-sys-border/30 bg-black/30 p-3">
+          <div className="mb-4 border border-sys-border/30 bg-black/30 p-3 space-y-2">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-[10px] uppercase tracking-widest text-sys-muted">
-                  編成状況
-                </p>
-                <p className="mt-0.5 font-mono text-lg text-sys-accent">
-                  {equippedCount} / {SHADOW_EQUIP_LIMIT}
-                </p>
-              </div>
-              <div className="grid grid-cols-5 gap-1.5 text-center">
-                {ALL_STATS.map((s) => (
-                  <div key={s} className="px-1.5 py-1 border border-sys-border/30">
-                    <div className="text-[9px] uppercase tracking-widest text-sys-muted">
-                      {STAT_LABELS[s].en}
-                    </div>
-                    <div className={`font-mono text-sm ${bonus[s] > 0 ? 'text-sys-accent' : 'text-sys-text/40'}`}>
-                      +{bonus[s]}
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <p className="text-[10px] uppercase tracking-widest text-sys-muted">
+                編成 (ボス戦で自動戦闘)
+              </p>
+              <p className="font-mono text-lg text-sys-accent">
+                {equippedCount} / {SHADOW_EQUIP_LIMIT}
+              </p>
             </div>
+            <p className="text-[10px] text-sys-muted/80">
+              装備した影はボス戦で各自の ATB が満ちる度に自動攻撃する。レアリティが高いほど ATB が早く溜まり、ダメージも大きい
+            </p>
           </div>
 
           {shadows.length === 0 ? (
@@ -219,8 +200,9 @@ function ShadowCard({
             <span className="text-[10px] uppercase tracking-widest text-sys-muted">
               {STAT_LABELS[stat].en}
             </span>
-            <span className="font-mono text-xs text-sys-accent">
-              {formatBonus(shadow)}
+            <span className="inline-flex items-center gap-1 font-mono text-xs text-sys-accent">
+              <Zap className="h-3 w-3" />
+              {combatLine(shadow)}
             </span>
           </div>
         </div>

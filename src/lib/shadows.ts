@@ -142,30 +142,24 @@ export function rollBossReward(
   return { stat, rarity };
 }
 
-// Sum of equipped shadow bonuses per stat. Driven off both template stat
-// (primary) and SPLASH_ORDER (secondary tail) so a legendary shadow lights
-// up two stats noticeably.
-export function totalShadowBonus(
-  shadows: Shadow[]
-): Record<StatKey, number> {
-  const bonus: Record<StatKey, number> = { STR: 0, AGI: 0, INT: 0, VIT: 0, PER: 0 };
-  for (const s of shadows) {
-    if (!s.equipped) continue;
-    const { primary, splash } = RARITY_BONUS[s.rarity];
-    bonus[s.stat] += primary;
-    if (splash > 0) {
-      const splashStats = SPLASH_ORDER[s.stat];
-      // Higher rarity → splashes into more secondary stats (1 for rare/epic,
-      // 2 for legendary based on the bonus.splash value).
-      for (let i = 0; i < splash; i++) {
-        const target = splashStats[i];
-        if (target) bonus[target] += 1;
-      }
-    }
-  }
-  return bonus;
-}
+// NOTE: Shadows no longer give passive stat bonuses. They're auto-fighting
+// companions in boss combat — see SHADOW_COMBAT below. The RARITY_BONUS
+// table is retained because the rarity tiers still rank shadow power, just
+// channelled through combat stats now.
+void RARITY_BONUS;
+void SPLASH_ORDER;
 
 // How many shadows the user can equip at once. Centralised here so the limit
 // is consistent across UI gates and persistence checks.
-export const SHADOW_EQUIP_LIMIT = 5;
+// 3 = small "party" of auto-fighting companions in boss combat.
+export const SHADOW_EQUIP_LIMIT = 3;
+
+// Per-rarity combat stats for shadow companions in the boss tower. These
+// drive their independent ATB + auto-attack damage. Higher rarity = both
+// faster ATB and harder hits.
+export const SHADOW_COMBAT: Record<ShadowRarity, { atbSpeed: number; attack: number }> = {
+  normal:    { atbSpeed: 4,  attack: 6 },
+  rare:      { atbSpeed: 6,  attack: 12 },
+  epic:      { atbSpeed: 8,  attack: 20 },
+  legendary: { atbSpeed: 10, attack: 32 },
+};

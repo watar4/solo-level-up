@@ -19,22 +19,26 @@ import { QuestActionSheet } from './QuestActionSheet';
 import { SystemToast } from './SystemToast';
 import { HistoryPanel } from './HistoryPanel';
 import { AchievementsPanel } from './AchievementsPanel';
-import { SkillsPanel } from './SkillsPanel';
 import { ResetAccountModal } from './ResetAccountModal';
 import { StatsDashboard } from './StatsDashboard';
 import { ShadowArmyPanel } from './ShadowArmyPanel';
 import { DailyBossPanel } from './DailyBossPanel';
 import { BattleSkillsPanel } from './BattleSkillsPanel';
 import { AppearanceEditor } from './AppearanceEditor';
+import { InventoryPanel } from './InventoryPanel';
 import { SystemWindow } from './SystemWindow';
 import { useShadows } from '../hooks/useShadows';
+import { useItems } from '../hooks/useItems';
 import { rollShadowDrop, RARITY_LABEL } from '../lib/shadows';
+import { weaponStatBonus } from '../lib/items';
+import type { StatKey } from '../types';
 import { isQuestDoneToday, useGameData } from '../hooks/useGameData';
 import { createQuest } from '../lib/firestore';
 import type { Character, Quest } from '../types';
 import {
   Award,
   BarChart3,
+  Backpack,
   ChevronDown,
   ChevronUp,
   Crown,
@@ -72,18 +76,31 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
   });
   const [historyOpen, setHistoryOpen] = useState(false);
   const [achOpen, setAchOpen] = useState(false);
-  const [skillsOpen, setSkillsOpen] = useState(false);
   const [statsOpen, setStatsOpen] = useState(false);
   const [shadowOpen, setShadowOpen] = useState(false);
   const [bossOpen, setBossOpen] = useState(false);
   const [battleSkillsOpen, setBattleSkillsOpen] = useState(false);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
+  const [inventoryOpen, setInventoryOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [actionSheet, setActionSheet] = useState<ActionSheetState | null>(null);
 
-  // Shadow army subscription. Bonuses feed into the boss panel's effective
-  // stats and (eventually) elsewhere on the dashboard.
+  // Shadow army subscription. Shadows now fight independently as boss
+  // companions instead of granting passive stat bonuses.
   const shadowData = useShadows(user.uid);
+  // Inventory items (weapons). One equipped weapon contributes a stat
+  // bonus to the player's effective stats in combat.
+  const itemsData = useItems(user.uid);
+
+  // Player effective stats = base + equipped weapon bonus.
+  const effectiveStats = useMemo<Record<StatKey, number>>(() => {
+    const out: Record<StatKey, number> = { ...character.stats };
+    const bonus = weaponStatBonus(itemsData.items);
+    for (const k of Object.keys(bonus) as StatKey[]) {
+      out[k] = (out[k] ?? 0) + (bonus[k] ?? 0);
+    }
+    return out;
+  }, [character.stats, itemsData.items]);
   // Explicit "what's being dragged" id, set the instant dnd-kit fires
   // onDragStart. Forwarded to each SortableQuestCard so the lift visual can
   // fire even if useSortable.isDragging propagates a tick late.
@@ -247,6 +264,15 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
                 {shadowData.equippedCount}/{shadowData.shadows.length}
               </span>
             </button>
+            <button type="button" className="sys-button" onClick={() => setInventoryOpen(true)}>
+              <Backpack className="h-4 w-4" />
+              装備
+              {itemsData.equippedWeapon && (
+                <span className="ml-1 text-[10px] font-mono text-sys-accent">
+                  {itemsData.equippedWeapon.stat}
+                </span>
+              )}
+            </button>
             <button type="button" className="sys-button" onClick={() => setStatsOpen(true)}>
               <BarChart3 className="h-4 w-4" />
               統計
@@ -260,13 +286,6 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
               実績
               <span className="ml-1 text-[10px] font-mono text-sys-gold">
                 {(character.unlocked?.achievements ?? []).length}
-              </span>
-            </button>
-            <button type="button" className="sys-button" onClick={() => setSkillsOpen(true)}>
-              <Sparkles className="h-4 w-4" />
-              スキル
-              <span className="ml-1 text-[10px] font-mono text-purple-300">
-                {(character.unlocked?.skills ?? []).length}
               </span>
             </button>
             {game.isMaster && (
@@ -546,12 +565,18 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
         open={bossOpen}
         uid={user.uid}
         character={character}
-        shadowBonus={shadowData.bonus}
+        effectiveStats={effectiveStats}
+        equippedShadows={shadowData.equippedShadows}
         onClose={() => setBossOpen(false)}
         onAwardShadow={async (templateId) => {
           const shadow = await shadowData.awardShadow(templateId);
           if (!shadow) return null;
           return { id: shadow.id, name: shadow.name };
+        }}
+        onAwardWeapon={async (templateId) => {
+          const w = await itemsData.awardWeapon(templateId);
+          if (!w) return null;
+          return { id: w.id, name: w.name };
         }}
         onIncrementFloor={game.incrementBossesDefeated}
         // Boss results are already displayed inside the boss panel itself
@@ -559,8 +584,15 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
         // center-screen SystemToast so it doesn't cover the panel.
         onEnqueueBossEvent={() => undefined}
       />
+      <InventoryPanel
+        open={inventoryOpen}
+        items={itemsData.items}
+        onClose={() => setInventoryOpen(false)}
+        onEquip={itemsData.equipWeapon}
+        onUnequip={itemsData.unequipWeapon}
+        onDiscard={itemsData.discardItem}
+      />
       <AchievementsPanel open={achOpen} character={character} onClose={() => setAchOpen(false)} />
-      <SkillsPanel open={skillsOpen} character={character} onClose={() => setSkillsOpen(false)} />
       <ResetAccountModal
         open={resetOpen}
         character={character}

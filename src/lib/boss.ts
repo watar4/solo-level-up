@@ -126,6 +126,15 @@ export function currentFloor(character: { bossesDefeated?: number }): number {
   return (character.bossesDefeated ?? 0) + 1;
 }
 
+// Mini-bosses appear every 5 floors as a difficulty checkpoint. They share
+// the regular boss pool but get a stat buff and a UI badge so the run has
+// a rising arc instead of being uniformly steep.
+export function isMiniBossFloor(floor: number): boolean {
+  return floor > 0 && floor % 5 === 0;
+}
+const MINI_BOSS_HP_MULT = 1.5;
+const MINI_BOSS_ATK_MULT = 1.25;
+
 // ── Combat formulas ────────────────────────────────────────────────────
 
 // Hit-points pool the player carries into combat. VIT is the floor on
@@ -135,22 +144,29 @@ export function playerMaxHp(stats: Record<StatKey, number>, level: number): numb
   return 50 + (stats.VIT ?? 0) * 3 + level * 4;
 }
 
-// Boss HP scales with both player level (gentle) and current floor
-// (heavier) so the difficulty curve keeps rising as you climb the tower.
+// Boss HP scales with player level (gentle), current floor (heavier), and
+// number of companion shadows (so 3 auto-attacking shadows don't make
+// fights trivial). 2× baseline + +35% per equipped shadow.
+// Mini-boss floors (every 5th) take an extra ×1.5 HP multiplier.
 export function scaledBossHp(
   boss: BossDef,
   playerLevel: number,
-  floor: number = 1
+  floor: number = 1,
+  companionCount: number = 0
 ): number {
   const levelMod = 1 + (playerLevel - 1) * 0.05;
   const floorMod = 1 + (floor - 1) * 0.10;
-  return Math.round(boss.hp * levelMod * floorMod);
+  const companionMod = 1 + companionCount * 0.35;
+  const miniMod = isMiniBossFloor(floor) ? MINI_BOSS_HP_MULT : 1;
+  return Math.round(boss.hp * 2 * levelMod * floorMod * companionMod * miniMod);
 }
 
 // Same idea for boss attack — each floor bumps the per-hit damage so the
-// player can't AFK the tower indefinitely with a Lv-1 build.
+// player can't AFK the tower indefinitely with a Lv-1 build. Mini-bosses
+// also hit harder per swing.
 export function scaledBossAttack(boss: BossDef, floor: number = 1): number {
-  return boss.attack + Math.floor((floor - 1) * 0.7);
+  const base = boss.attack + Math.floor((floor - 1) * 0.7);
+  return isMiniBossFloor(floor) ? Math.round(base * MINI_BOSS_ATK_MULT) : base;
 }
 
 // ── ATB initiative ────────────────────────────────────────────────────

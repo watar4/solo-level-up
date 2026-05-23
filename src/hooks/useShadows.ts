@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   addShadow,
   deleteShadow,
@@ -8,14 +8,13 @@ import {
 import {
   SHADOW_EQUIP_LIMIT,
   SHADOW_TEMPLATES,
-  totalShadowBonus,
 } from '../lib/shadows';
-import type { Shadow, ShadowRarity, StatKey } from '../types';
+import type { Shadow, ShadowRarity } from '../types';
 
 export interface ShadowsData {
   shadows: Shadow[];
+  equippedShadows: Shadow[];
   equippedCount: number;
-  bonus: Record<StatKey, number>;
   equipShadow: (id: string) => Promise<void>;
   unequipShadow: (id: string) => Promise<void>;
   awardShadow: (templateId: string) => Promise<Shadow | null>;
@@ -75,13 +74,15 @@ export function useShadows(uid: string | null): ShadowsData {
     await deleteShadow(id);
   }, []);
 
-  const equippedCount = shadows.filter((s) => s.equipped).length;
-  const bonus = totalShadowBonus(shadows);
+  const equippedShadows = useMemo(
+    () => shadows.filter((s) => s.equipped),
+    [shadows]
+  );
 
   return {
     shadows,
-    equippedCount,
-    bonus,
+    equippedShadows,
+    equippedCount: equippedShadows.length,
     equipShadow,
     unequipShadow,
     awardShadow,

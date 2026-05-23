@@ -18,6 +18,7 @@ import type {
   BossAttempt,
   Character,
   HunterAppearance,
+  Item,
   Quest,
   Shadow,
   StatKey,
@@ -289,4 +290,43 @@ export async function getBossAttemptsForDate(
     const data = d.data() as Omit<BossAttempt, 'id'>;
     return { ...data, id: d.id };
   });
+}
+
+// --- Items / weapons ---------------------------------------------------
+
+export function subscribeItems(
+  uid: string,
+  onChange: (items: Item[]) => void,
+  onError?: (err: Error) => void
+): () => void {
+  const q = query(collection(requireDb(), 'items'), where('uid', '==', uid));
+  return onSnapshot(
+    q,
+    (snap) => {
+      const items: Item[] = [];
+      snap.forEach((s) => {
+        const data = s.data() as Omit<Item, 'id'>;
+        items.push({ ...data, id: s.id });
+      });
+      items.sort((a, b) => b.createdAt - a.createdAt);
+      onChange(items);
+    },
+    (err) => {
+      console.error('[items:subscribe] failed', err);
+      onError?.(err);
+    }
+  );
+}
+
+export async function addItem(item: Omit<Item, 'id'>): Promise<string> {
+  const ref = await addDoc(collection(requireDb(), 'items'), item);
+  return ref.id;
+}
+
+export async function updateItem(id: string, patch: Partial<Item>): Promise<void> {
+  await updateDoc(doc(requireDb(), 'items', id), patch as Record<string, unknown>);
+}
+
+export async function deleteItem(id: string): Promise<void> {
+  await deleteDoc(doc(requireDb(), 'items', id));
 }

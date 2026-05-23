@@ -180,10 +180,10 @@ export const BATTLE_SKILLS: BattleSkill[] = [
     id: 'full-heal',
     name: '完全治癒',
     label: 'MEND',
-    description: 'VIT ≥ 25: 最大HPの50%回復 / CD 5',
+    description: 'VIT ≥ 25: 最大HPの50%回復 / CD 4',
     effect: { kind: 'heal', healPct: 0.5 },
     unlock: { statThreshold: { stat: 'VIT', value: 25 } },
-    cooldown: 5,
+    cooldown: 4,
   },
   {
     id: 'see-through',

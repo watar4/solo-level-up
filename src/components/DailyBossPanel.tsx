@@ -11,6 +11,7 @@ import {
   computePlayerAttack,
   currentFloor,
   extractionChance,
+  isMiniBossFloor,
   pickBossByFloor,
   playerAtbSpeed,
   playerMaxHp,
@@ -30,8 +31,18 @@ import {
   renderClassSprite,
 } from '../lib/playerSprites';
 import { addBossAttempt } from '../lib/firestore';
-import { RARITY_LABEL, SHADOW_TEMPLATES } from '../lib/shadows';
-import type { Character, ShadowRarity, StatKey } from '../types';
+import {
+  RARITY_COLOR,
+  RARITY_LABEL,
+  SHADOW_COMBAT,
+  SHADOW_TEMPLATES,
+} from '../lib/shadows';
+import {
+  rollChestWeapon,
+  treasureChestChance,
+  weaponBonusFor,
+} from '../lib/items';
+import type { Character, Shadow, ShadowRarity, StatKey } from '../types';
 import { STAT_LABELS } from '../types';
 import { todayKey } from '../lib/leveling';
 
@@ -39,9 +50,13 @@ interface Props {
   open: boolean;
   uid: string;
   character: Character;
-  shadowBonus: Record<StatKey, number>;
+  // Player's effective stats including any equipped weapon bonus. Shadows
+  // no longer contribute to this — they fight separately.
+  effectiveStats: Record<StatKey, number>;
+  equippedShadows: Shadow[];
   onClose: () => void;
   onAwardShadow: (templateId: string) => Promise<{ id: string; name: string } | null>;
+  onAwardWeapon: (templateId: string) => Promise<{ id: string; name: string } | null>;
   onIncrementFloor: () => Promise<void>;
   onEnqueueBossEvent: (args: {
     bossName: string;
@@ -54,10 +69,11 @@ interface Props {
 interface BattleLog {
   id: string;
   text: string;
-  tone?: 'weak' | 'resist' | 'crit' | 'dodge' | 'heal' | 'system' | 'boss';
+  tone?: 'weak' | 'resist' | 'crit' | 'dodge' | 'heal' | 'system' | 'boss' | 'companion';
 }
 
 type Phase =
+  | 'roadmap'
   | 'ready'
   | 'fighting'
   | 'player-turn'
@@ -71,14 +87,33 @@ export function DailyBossPanel({
   open,
   uid,
   character,
-  shadowBonus,
+  effectiveStats,
+  equippedShadows,
   onClose,
   onAwardShadow,
+  onAwardWeapon,
   onIncrementFloor,
   onEnqueueBossEvent,
 }: Props) {
   const today = todayKey();
-  const floor = currentFloor(character);
+  // Furthest unexplored floor — anything ≤ this is selectable in the
+  // roadmap (cleared floors are revisitable, the next one is the new
+  // frontier). bossesDefeated + 1 is also the value to advance to on a
+  // first-clear win.
+  const nextFloor = currentFloor(character);
+
+  // The floor the user is *currently* fighting / about to fight. Defaults
+  // to the frontier when the panel first opens, but the roadmap can
+  // re-target it backward to revisit a cleared floor.
+  const [selectedFloor, setSelectedFloor] = useState(nextFloor);
+  // Whenever the character's progress advances (e.g. just defeated the
+  // frontier), bump the selected floor along — keeps the panel synced when
+  // it's already mounted.
+  useEffect(() => {
+    setSelectedFloor((prev) => Math.max(prev, nextFloor));
+  }, [nextFloor]);
+
+  const floor = selectedFloor;
   const rawBoss = useMemo<BossDef>(() => pickBossByFloor(floor), [floor]);
   // Pre-scale the boss's attack value with the floor so the rest of the
   // combat code can ignore floor-specific logic.
@@ -87,17 +122,12 @@ export function DailyBossPanel({
     [rawBoss, floor]
   );
 
-  const effective = useMemo<Record<StatKey, number>>(() => {
-    const out = { ...character.stats };
-    (Object.keys(out) as StatKey[]).forEach((k) => {
-      out[k] = (out[k] ?? 0) + (shadowBonus[k] ?? 0);
-    });
-    return out;
-  }, [character.stats, shadowBonus]);
+  const effective = effectiveStats;
+  const companionCount = equippedShadows.length;
 
   const maxBossHp = useMemo(
-    () => scaledBossHp(boss, character.level, floor),
-    [boss, character.level, floor]
+    () => scaledBossHp(boss, character.level, floor, companionCount),
+    [boss, character.level, floor, companionCount]
   );
   const maxPlayerHp = useMemo(
     () => playerMaxHp(effective, character.level),
@@ -121,6 +151,23 @@ export function DailyBossPanel({
   // Per-skill cooldown counters. Decrement on each player action; the just-
   // used skill is set to its full cooldown the same turn.
   const [cooldowns, setCooldowns] = useState<Record<string, number>>({});
+
+  // Independent ATB gauges per companion shadow. Each fills based on the
+  // shadow's rarity-driven speed and discharges as an auto-attack on the
+  // boss when it tops out.
+  const [shadowAtbs, setShadowAtbs] = useState<Record<string, number>>({});
+
+  // Treasure chest after victory (rolled once when finalize is called).
+  const [treasureRolled, setTreasureRolled] = useState(false);
+  const [treasureItem, setTreasureItem] = useState<{
+    templateId: string;
+    name: string;
+    rarity: ShadowRarity;
+    stat: StatKey;
+    bonus: number;
+  } | null>(null);
+  const [treasureOpened, setTreasureOpened] = useState(false);
+  const [treasureBusy, setTreasureBusy] = useState(false);
 
   // Post-victory shadow extraction state.
   interface ExtractionResultUI {
@@ -153,11 +200,22 @@ export function DailyBossPanel({
       .filter((s): s is BattleSkill => !!s);
   }, [character]);
 
-  // Reset combat state whenever the panel opens or the floor changes
-  // (after a win the floor counter advances, which retriggers this).
+  // When the panel itself opens, start at the roadmap so the user picks a
+  // floor (frontier or revisit). When the *floor* changes (because the
+  // user picked one, or because the frontier advanced after a win),
+  // reset combat for that floor but don't yank them back to the roadmap.
   useEffect(() => {
     if (!open) return;
-    setPhase('ready');
+    setPhase('roadmap');
+    setSelectedFloor(nextFloor);
+  }, [open, nextFloor]);
+
+  // Combat + reward reset. Intentionally NOT depending on equippedShadows
+  // — that array reference changes whenever a new shadow is rolled (e.g.
+  // a successful extraction adds an unequipped shadow doc), and we don't
+  // want that to wipe the just-shown extraction / treasure UI.
+  useEffect(() => {
+    if (!open) return;
     setBossHp(maxBossHp);
     setPlayerHp(maxPlayerHp);
     setPlayerAtb(0);
@@ -169,7 +227,23 @@ export function DailyBossPanel({
     setExtractionsLeft(EXTRACTION_ATTEMPTS_PER_WIN);
     setExtractionResults([]);
     setExtractionBusy(false);
+    setTreasureRolled(false);
+    setTreasureItem(null);
+    setTreasureOpened(false);
+    setTreasureBusy(false);
   }, [open, floor, maxBossHp, maxPlayerHp]);
+
+  // Re-seed shadow ATB gauges whenever the equipped set actually changes
+  // (cardinality / id list). Keyed on the joined-id string so a reference
+  // change without content change doesn't trigger a reset.
+  const equippedKey = equippedShadows.map((s) => s.id).join(',');
+  useEffect(() => {
+    if (!open) return;
+    const blank: Record<string, number> = {};
+    for (const s of equippedShadows) blank[s.id] = 0;
+    setShadowAtbs(blank);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, floor, equippedKey]);
 
   // ATB ticker — runs continuously while in a battle phase. Stops as soon as
   // someone gets a turn so the UI can wait for input (or animate the boss).
@@ -195,11 +269,90 @@ export function DailyBossPanel({
         }
         return next;
       });
+      // Advance each companion shadow's ATB. When one tops out we fire its
+      // attack inline (deals damage to the boss, resets that shadow's ATB
+      // back to 0). The phase machine is not touched — shadow attacks run
+      // independently of the player/boss turn loop.
+      setShadowAtbs((prev) => {
+        let changed = false;
+        const next: Record<string, number> = { ...prev };
+        for (const s of equippedShadows) {
+          const speed = SHADOW_COMBAT[s.rarity].atbSpeed;
+          const v = (prev[s.id] ?? 0) + speed;
+          if (v >= ATB_TARGET) {
+            // Fire — damage roll with a small variance band.
+            const atk = SHADOW_COMBAT[s.rarity].attack;
+            const variance = 0.85 + Math.random() * 0.3;
+            const dmg = Math.max(1, Math.round(atk * variance));
+            // Apply via setBossHp callback to keep state consistent.
+            setBossHp((hpPrev) => {
+              const after = Math.max(0, hpPrev - dmg);
+              return after;
+            });
+            setLog((logPrev) => [
+              ...logPrev,
+              {
+                id: `shadow-${s.id}-${Date.now()}-${Math.random()}`,
+                text: `▶ ${s.name} の連撃 → ${dmg} ダメージ`,
+                tone: 'companion',
+              },
+            ]);
+            next[s.id] = 0;
+            changed = true;
+          } else {
+            next[s.id] = v;
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
     }, TICK_MS);
     return () => {
       if (intervalRef.current != null) window.clearInterval(intervalRef.current);
     };
-  }, [open, phase, effective, boss]);
+  }, [open, phase, effective, boss, equippedShadows]);
+
+  // Watch for shadow-driven KO — bossHp can hit 0 from a companion blow
+  // while the player is mid-turn. Finalise the fight in that case.
+  useEffect(() => {
+    if (phase !== 'fighting' && phase !== 'player-turn') return;
+    if (bossHp === 0) {
+      void finalize(true, turn);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bossHp]);
+
+  // Auto-skip: if the player gauge fills but every equipped skill is on
+  // cooldown, the user would be soft-locked with no usable button. Treat
+  // that as a "wait" action — tick cooldowns down by 1, reset player ATB,
+  // hand control back to the ticker. Without this the high-CD loadouts
+  // (e.g. 3× CD 3+ skills) could deadlock at turn 4.
+  useEffect(() => {
+    if (phase !== 'player-turn') return;
+    if (equippedSkills.length === 0) return;
+    const allLocked = equippedSkills.every(
+      (s) => (cooldowns[s.id] ?? 0) > 0
+    );
+    if (!allLocked) return;
+    setCooldowns((prev) => {
+      const next: Record<string, number> = {};
+      for (const id in prev) {
+        const remaining = Math.max(0, (prev[id] ?? 0) - 1);
+        if (remaining > 0) next[id] = remaining;
+      }
+      return next;
+    });
+    setPlayerAtb(0);
+    setPhase('fighting');
+    setLog((prev) => [
+      ...prev,
+      {
+        id: `wait-${Date.now()}`,
+        text: '構え直し… (全スキルCD中、1ターン待機)',
+        tone: 'system',
+      },
+    ]);
+  }, [phase, cooldowns, equippedSkills]);
 
   // Boss attack auto-resolves when boss's ATB fills.
   useEffect(() => {
@@ -365,20 +518,54 @@ export function DailyBossPanel({
 
     if (won) {
       // No EXP/stat reward — daily quest progression is the only path for
-      // character growth. Boss kills give shadow-extraction attempts only.
+      // character growth. Boss kills give shadow-extraction attempts +
+      // a chance at a weapon chest.
       onEnqueueBossEvent({
         bossName: boss.name,
         won: true,
         floor,
       });
-      // Stay on the 'won' screen until the user uses up (or skips) the
-      // extraction attempts and clicks 次の階層へ.
+
+      // Roll the treasure chest once per win. The actual weapon roll
+      // happens when the user clicks 開ける so they get an opening beat.
+      const chance = treasureChestChance(floor);
+      const dropped = Math.random() < chance;
+      setTreasureRolled(true);
+      if (dropped) {
+        const template = rollChestWeapon({
+          playerLevel: character.level,
+          floor,
+        });
+        setTreasureItem({
+          templateId: template.id,
+          name: template.name,
+          rarity: template.rarity,
+          stat: template.stat,
+          bonus: weaponBonusFor(template.rarity),
+        });
+      } else {
+        setTreasureItem(null);
+      }
+      setTreasureOpened(false);
     } else {
       onEnqueueBossEvent({
         bossName: boss.name,
         won: false,
         floor,
       });
+    }
+  };
+
+  const handleOpenChest = async () => {
+    if (!treasureItem || treasureOpened || treasureBusy) return;
+    setTreasureBusy(true);
+    try {
+      await onAwardWeapon(treasureItem.templateId);
+      setTreasureOpened(true);
+    } catch (err) {
+      console.error('[chest] award weapon failed', err);
+    } finally {
+      setTreasureBusy(false);
     }
   };
 
@@ -479,16 +666,42 @@ export function DailyBossPanel({
             </button>
           </div>
 
-          {(
+          {phase === 'roadmap' ? (
+            <FloorRoadmap
+              nextFloor={nextFloor}
+              onSelect={(f) => {
+                setSelectedFloor(f);
+                setPhase('ready');
+              }}
+            />
+          ) : (
             <div className="space-y-4">
               {/* Floor indicator */}
               <div className="flex items-center justify-between border border-sys-border/30 bg-black/30 px-3 py-2">
-                <p className="text-[10px] uppercase tracking-widest text-sys-muted">
-                  Tower Floor
-                </p>
-                <p className="font-mono text-xl text-sys-accent">
-                  #{floor}
-                </p>
+                <div className="flex items-center gap-2">
+                  <p className="text-[10px] uppercase tracking-widest text-sys-muted">
+                    Tower Floor
+                  </p>
+                  {isMiniBossFloor(floor) && (
+                    <span className="inline-flex items-center gap-1 border border-sys-gold/60 bg-sys-gold/10 px-1.5 text-[9px] font-bold tracking-widest text-sys-gold">
+                      ★ MINI BOSS
+                    </span>
+                  )}
+                  {selectedFloor < nextFloor && (
+                    <span className="text-[9px] text-sys-muted">(再挑戦)</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPhase('roadmap')}
+                    title="ロードマップへ戻る"
+                    className="text-[10px] uppercase tracking-widest text-sys-muted hover:text-sys-accent transition"
+                  >
+                    ← ロードマップ
+                  </button>
+                  <p className="font-mono text-xl text-sys-accent">#{floor}</p>
+                </div>
               </div>
 
               {/* Boss banner */}
@@ -633,6 +846,43 @@ export function DailyBossPanel({
                 </AnimatePresence>
               </div>
 
+              {/* Companion shadows row */}
+              {equippedShadows.length > 0 && (
+                <div className="border border-purple-400/30 bg-black/30 px-3 py-2 space-y-2">
+                  <p className="text-[10px] uppercase tracking-widest text-sys-muted">
+                    影軍団 (自動戦闘 · {equippedShadows.length} 体)
+                  </p>
+                  <div className={`grid gap-2 ${equippedShadows.length === 1 ? 'grid-cols-1' : equippedShadows.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+                    {equippedShadows.map((s) => {
+                      const combat = SHADOW_COMBAT[s.rarity];
+                      const atb = shadowAtbs[s.id] ?? 0;
+                      const pct = Math.min(100, (atb / ATB_TARGET) * 100);
+                      return (
+                        <div
+                          key={s.id}
+                          className={`border px-2 py-1.5 ${RARITY_COLOR[s.rarity]} bg-black/40`}
+                        >
+                          <div className="flex items-baseline justify-between gap-1">
+                            <p className="truncate text-[11px] font-bold text-sys-text">
+                              {s.name}
+                            </p>
+                            <span className="text-[9px] font-mono text-sys-muted shrink-0">
+                              {s.stat} · ATK {combat.attack}
+                            </span>
+                          </div>
+                          <div className="mt-1 h-1 w-full overflow-hidden border border-sys-border/30 bg-black/60">
+                            <div
+                              className="h-full transition-[width] duration-75 bg-gradient-to-r from-purple-400 to-pink-400"
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* Phase controls */}
               {phase === 'ready' && (
                 <button
@@ -729,6 +979,8 @@ export function DailyBossPanel({
                                 ? 'text-sys-accent'
                                 : l.tone === 'heal'
                                 ? 'text-sys-ok'
+                                : l.tone === 'companion'
+                                ? 'text-purple-300'
                                 : l.tone === 'boss'
                                 ? 'text-sys-danger'
                                 : l.tone === 'system'
@@ -810,16 +1062,79 @@ export function DailyBossPanel({
                         )}
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => void onIncrementFloor()}
-                        className="sys-button w-full justify-center"
-                      >
-                        <Swords className="h-4 w-4" />
-                        {extractionsLeft > 0
-                          ? `Floor ${floor + 1} へ進む (残り抽出を捨てる)`
-                          : `Floor ${floor + 1} へ進む`}
-                      </button>
+                      {/* Treasure chest — only renders when a chest dropped */}
+                      {treasureRolled && treasureItem && (
+                        <div className="border border-sys-gold/50 bg-sys-gold/5 px-4 py-3 space-y-2">
+                          <div className="flex items-baseline justify-between">
+                            <p className="text-[10px] uppercase tracking-widest text-sys-gold">
+                              宝箱出現
+                            </p>
+                            <p className="text-[10px] text-sys-muted">
+                              ドロップ率 {Math.round(treasureChestChance(floor) * 100)}%
+                            </p>
+                          </div>
+                          {!treasureOpened ? (
+                            <button
+                              type="button"
+                              onClick={() => void handleOpenChest()}
+                              disabled={treasureBusy}
+                              className="sys-button w-full justify-center"
+                            >
+                              {treasureBusy ? '開けている…' : '🗝 宝箱を開ける'}
+                            </button>
+                          ) : (
+                            <p className="font-mono text-sm">
+                              <span
+                                className={`inline-block border px-1.5 mr-1 text-[10px] font-bold tracking-widest ${RARITY_COLOR[treasureItem.rarity]}`}
+                              >
+                                {RARITY_LABEL[treasureItem.rarity]}
+                              </span>
+                              <span className="text-sys-text">{treasureItem.name}</span>
+                              <span className="ml-2 text-sys-accent">
+                                {treasureItem.stat} +{treasureItem.bonus}
+                              </span>
+                              <span className="ml-2 text-[10px] text-sys-muted">
+                                インベントリへ
+                              </span>
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      {treasureRolled && !treasureItem && (
+                        <div className="border border-sys-border/20 bg-black/20 px-4 py-2 text-[11px] text-sys-muted text-center">
+                          宝箱は出現しなかった (Floor {floor} の確率 {Math.round(treasureChestChance(floor) * 100)}%)
+                        </div>
+                      )}
+
+                      {selectedFloor === nextFloor ? (
+                        // First-clear of the frontier — advance bossesDefeated
+                        // counter and proceed to the next floor.
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await onIncrementFloor();
+                            // After the counter advances, hop back to the
+                            // roadmap so the user sees their progress.
+                            setPhase('roadmap');
+                          }}
+                          className="sys-button w-full justify-center"
+                        >
+                          <Swords className="h-4 w-4" />
+                          {extractionsLeft > 0
+                            ? `Floor ${floor + 1} へ進む (残り抽出を捨てる)`
+                            : `Floor ${floor + 1} へ進む`}
+                        </button>
+                      ) : (
+                        // Revisit win — no counter change. Just return to
+                        // the roadmap.
+                        <button
+                          type="button"
+                          onClick={() => setPhase('roadmap')}
+                          className="sys-button w-full justify-center"
+                        >
+                          ロードマップへ戻る
+                        </button>
+                      )}
                     </>
                   )}
                   {phase === 'lost' && (
@@ -828,14 +1143,23 @@ export function DailyBossPanel({
                     </div>
                   )}
                   {phase === 'lost' && (
-                    <button
-                      type="button"
-                      onClick={retry}
-                      className="sys-button w-full justify-center"
-                    >
-                      <Swords className="h-4 w-4" />
-                      Floor {floor} に再挑戦
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setPhase('roadmap')}
+                        className="sys-button flex-1 justify-center"
+                      >
+                        ← ロードマップ
+                      </button>
+                      <button
+                        type="button"
+                        onClick={retry}
+                        className="sys-button flex-1 justify-center"
+                      >
+                        <Swords className="h-4 w-4" />
+                        Floor {floor} 再挑戦
+                      </button>
+                    </div>
                   )}
                 </>
               )}
@@ -922,5 +1246,88 @@ function CooldownBadge({ cd }: { cd: number }) {
     <span className="absolute top-1 right-1 inline-flex items-center justify-center min-w-[1.4rem] h-5 px-1 font-mono text-[10px] font-bold bg-sys-border/80 text-black border border-sys-border/60">
       CD {cd}
     </span>
+  );
+}
+
+interface FloorRoadmapProps {
+  nextFloor: number; // first unexplored floor (= bossesDefeated + 1)
+  onSelect: (floor: number) => void;
+}
+
+// Grid roadmap of every floor up to (and including) the next unexplored
+// one. Cleared floors are revisitable; future floors are locked and
+// rendered greyed-out so the user can see where the tower's heading.
+function FloorRoadmap({ nextFloor, onSelect }: FloorRoadmapProps) {
+  // Show at least 25 floors and always at least 5 floors past the frontier,
+  // so a brand-new player still sees a long-ish tower.
+  const visibleMax = Math.max(25, nextFloor + 5);
+  const floors = Array.from({ length: visibleMax }, (_, i) => i + 1);
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-[10px] uppercase tracking-widest text-sys-muted">
+            Tower Roadmap
+          </p>
+          <p className="mt-0.5 text-xs text-sys-text/80">
+            到達 Floor {nextFloor === 1 ? '— (未踏破)' : `${nextFloor - 1}`} · 次の挑戦 Floor {nextFloor}
+          </p>
+        </div>
+        <div className="text-right text-[10px] text-sys-muted space-y-0.5">
+          <p><span className="text-sys-ok">✓</span> 撃破済 (再挑戦可)</p>
+          <p><span className="text-sys-accent">▶</span> 未踏破</p>
+          <p><span className="text-sys-gold">★</span> ミニボス</p>
+        </div>
+      </div>
+      <div className="grid grid-cols-5 gap-1.5 max-h-80 overflow-y-auto pr-1.5">
+        {floors.map((f) => {
+          const cleared = f < nextFloor;
+          const current = f === nextFloor;
+          const locked = f > nextFloor;
+          const mini = f % 5 === 0;
+          const enabled = !locked;
+          return (
+            <button
+              key={f}
+              type="button"
+              disabled={!enabled}
+              onClick={() => enabled && onSelect(f)}
+              title={
+                locked
+                  ? '未踏破 — 前のフロアを撃破して解放'
+                  : current
+                  ? `Floor ${f} に挑戦`
+                  : `Floor ${f} に再挑戦`
+              }
+              className={`relative flex flex-col items-center justify-center border px-2 py-2 transition ${
+                current
+                  ? 'border-sys-accent bg-sys-accent/10 hover:bg-sys-accent/20'
+                  : cleared
+                  ? 'border-sys-ok/40 bg-sys-ok/5 hover:bg-sys-ok/15'
+                  : 'border-sys-border/20 bg-black/30 opacity-40 cursor-not-allowed'
+              }`}
+            >
+              <span className="font-mono text-sm font-bold text-sys-text">
+                {f}
+              </span>
+              <span className="mt-0.5 text-[9px] uppercase tracking-widest">
+                {current ? (
+                  <span className="text-sys-accent">▶ 次</span>
+                ) : cleared ? (
+                  <span className="text-sys-ok">✓</span>
+                ) : (
+                  <span className="text-sys-muted">🔒</span>
+                )}
+              </span>
+              {mini && (
+                <span className="absolute top-1 right-1 text-[10px] text-sys-gold">
+                  ★
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
