@@ -2,10 +2,12 @@ import type { Character } from '../types';
 import { ALL_STATS, STAT_LABELS } from '../types';
 import { expForLevel, rankForLevel } from '../lib/leveling';
 import { SystemWindow } from './SystemWindow';
+import { WeightPanel } from './WeightPanel';
 
 interface Props {
   character: Character;
   email?: string | null;
+  uid: string;
 }
 
 const RANK_COLORS: Record<string, string> = {
@@ -18,7 +20,7 @@ const RANK_COLORS: Record<string, string> = {
   SS: 'text-rose-300',
 };
 
-export function StatusPanel({ character, email }: Props) {
+export function StatusPanel({ character, email, uid }: Props) {
   const rank = rankForLevel(character.level);
   const need = expForLevel(character.level);
   const pct = Math.min(100, Math.round((character.exp / need) * 100));
@@ -84,6 +86,10 @@ export function StatusPanel({ character, email }: Props) {
               </span>
             </div>
           ))}
+        </div>
+
+        <div className="border-t border-sys-border/20 pt-4">
+          <WeightPanel uid={uid} />
         </div>
 
         <div className="border-t border-sys-border/20 pt-3 text-[11px] text-sys-muted">

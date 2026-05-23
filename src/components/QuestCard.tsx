@@ -1,7 +1,11 @@
 import type { Quest } from '../types';
 import { DIFFICULTY_EXP, STAT_LABELS } from '../types';
 import { daysUntilWeekReset, effectiveStreak, todayKey, yesterdayKey } from '../lib/leveling';
-import { Check, Clock, Flame, MoreVertical } from 'lucide-react';
+import { Check, Clock, Flame, GripVertical, MoreVertical } from 'lucide-react';
+
+// Pass-through type for dnd-kit's useSortable listeners. We treat it
+// opaquely — it's just a record of handlers to spread onto the drag handle.
+export type DragListeners = Record<string, (event: React.SyntheticEvent) => void>;
 
 interface Props {
   quest: Quest;
@@ -12,6 +16,10 @@ interface Props {
   // touch — the previously inline edit/up/down/delete icons were too close
   // together to tap reliably on a phone.
   onOpenMenu?: () => void;
+  // When provided, renders a dedicated grip handle that receives drag
+  // listeners. The rest of the card stays scroll-friendly (touch-action:auto),
+  // so the user's normal swipe-to-scroll never gets misread as a drag attempt.
+  dragListeners?: DragListeners;
 }
 
 const DIFFICULTY_COLOR: Record<string, string> = {
@@ -29,7 +37,14 @@ const TYPE_LABEL: Record<Quest['type'], string> = {
   'one-time': '単発',
 };
 
-export function QuestCard({ quest, doneToday, busy, onToggle, onOpenMenu }: Props) {
+export function QuestCard({
+  quest,
+  doneToday,
+  busy,
+  onToggle,
+  onOpenMenu,
+  dragListeners,
+}: Props) {
   const expReward = DIFFICULTY_EXP[quest.difficulty];
   // Re-derive streak from completedDates so it expires automatically when the
   // user skips a day, instead of showing the stale value stored in Firestore.
@@ -129,17 +144,31 @@ export function QuestCard({ quest, doneToday, busy, onToggle, onOpenMenu }: Prop
           </div>
         </div>
 
-        {onOpenMenu && (
-          <button
-            type="button"
-            onClick={onOpenMenu}
-            aria-label="操作メニューを開く"
-            title="操作メニュー"
-            className="-mr-2 -mt-1 flex h-9 w-9 shrink-0 items-center justify-center text-sys-muted hover:text-sys-accent active:bg-sys-accent/10 transition"
-          >
-            <MoreVertical className="h-5 w-5" />
-          </button>
-        )}
+        <div className="flex shrink-0 items-start gap-0.5">
+          {dragListeners && (
+            <button
+              type="button"
+              aria-label="ドラッグして並び替え"
+              title="ドラッグして並び替え"
+              {...dragListeners}
+              style={{ touchAction: 'none' }}
+              className="-mt-1 flex h-9 w-7 cursor-grab items-center justify-center text-sys-muted/60 hover:text-sys-accent active:cursor-grabbing active:bg-sys-accent/10 transition"
+            >
+              <GripVertical className="h-5 w-5" />
+            </button>
+          )}
+          {onOpenMenu && (
+            <button
+              type="button"
+              onClick={onOpenMenu}
+              aria-label="操作メニューを開く"
+              title="操作メニュー"
+              className="-mr-2 -mt-1 flex h-9 w-9 items-center justify-center text-sys-muted hover:text-sys-accent active:bg-sys-accent/10 transition"
+            >
+              <MoreVertical className="h-5 w-5" />
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

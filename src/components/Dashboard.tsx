@@ -22,7 +22,6 @@ import { AchievementsPanel } from './AchievementsPanel';
 import { SkillsPanel } from './SkillsPanel';
 import { ResetAccountModal } from './ResetAccountModal';
 import { SystemWindow } from './SystemWindow';
-import { WeightPanel } from './WeightPanel';
 import { isQuestDoneToday, useGameData } from '../hooks/useGameData';
 import { createQuest } from '../lib/firestore';
 import type { Character, Quest } from '../types';
@@ -140,14 +139,13 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
     });
   };
 
-  // Drag-to-reorder: long-press on touch (300ms), small-move on mouse.
-  // Sensors are configured so a normal tap/click still flows to the checkbox
-  // and the ⋮ button without spuriously triggering a drag.
+  // Drag-to-reorder is initiated from the dedicated grip handle inside each
+  // QuestCard, so we no longer need a long-press timer to disambiguate a
+  // drag from a scroll attempt — distance-based activation is enough and
+  // makes the drag start feel snappier.
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(TouchSensor, {
-      activationConstraint: { delay: 300, tolerance: 8 },
-    })
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { distance: 6 } })
   );
 
   const handleDragStart = (event: DragStartEvent) => {
@@ -275,7 +273,7 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
 
             {active.length > 0 && (
               <p className="mt-2 text-[10px] text-sys-muted/70 text-center">
-                長押しでドラッグして並び替え · タップで完了
+                ≡ をドラッグして並び替え · タップで完了
               </p>
             )}
 
@@ -331,9 +329,7 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
           </SystemWindow>
 
           <div className="space-y-6">
-            <StatusPanel character={character} email={user.email} />
-
-            <WeightPanel uid={user.uid} />
+            <StatusPanel character={character} email={user.email} uid={user.uid} />
 
             <SystemWindow title="Today" subtitle="progress">
               <div className="space-y-2">

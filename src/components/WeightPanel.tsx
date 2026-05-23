@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react';
-import { SystemWindow } from './SystemWindow';
 import { WeightChart } from './WeightChart';
 import { useWeights } from '../hooks/useWeights';
 import { todayKey } from '../lib/leveling';
@@ -12,14 +11,15 @@ interface Props {
 const MIN_WEIGHT = 20;
 const MAX_WEIGHT = 300;
 
+// Section embedded inside StatusPanel — renders only its content (no
+// SystemWindow wrapper) so the body-weight readout / chart / input form
+// share the same surrounding frame as the rest of the Status block.
 export function WeightPanel({ uid }: Props) {
   const { entries, recordWeight } = useWeights(uid);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Latest entry overall (newest measurement wins). Used for the big-number
-  // display + the change indicator against the prior daily reading.
   const { latest, prior } = useMemo(() => {
     if (entries.length === 0) return { latest: null, prior: null };
     const byDate = new Map<string, (typeof entries)[number]>();
@@ -61,95 +61,89 @@ export function WeightPanel({ uid }: Props) {
   };
 
   return (
-    <SystemWindow title="Weight" subtitle="body management">
-      <div className="space-y-4">
-        <div className="flex items-end justify-between gap-3">
-          <div>
-            <p className="text-[10px] uppercase tracking-widest text-sys-muted flex items-center gap-1.5">
-              <Scale className="h-3 w-3" />
-              現在
-            </p>
-            <p className="mt-1 font-mono font-black leading-none text-sys-accent drop-shadow-[0_0_8px_rgba(0,212,255,0.4)]">
-              <span className="text-4xl">
-                {latest ? latest.weight.toFixed(1) : '--.-'}
-              </span>
-              <span className="ml-1 text-sm font-normal text-sys-muted">kg</span>
-            </p>
-            {latest && (
-              <p className="mt-1 text-[10px] text-sys-muted">
-                {recordedToday ? '本日の記録' : `${latest.date} の記録`}
-              </p>
-            )}
-          </div>
-          {delta !== null && (
-            <div className="text-right">
-              <p className="text-[10px] uppercase tracking-widest text-sys-muted">前回比</p>
-              <p
-                className={`mt-1 inline-flex items-center gap-0.5 font-mono text-sm ${
-                  delta > 0
-                    ? 'text-sys-danger'
-                    : delta < 0
-                    ? 'text-sys-ok'
-                    : 'text-sys-muted'
-                }`}
-              >
-                {delta > 0 ? (
-                  <ArrowUp className="h-3 w-3" />
-                ) : delta < 0 ? (
-                  <ArrowDown className="h-3 w-3" />
-                ) : (
-                  <Minus className="h-3 w-3" />
-                )}
-                {delta > 0 ? '+' : ''}
-                {delta.toFixed(1)} kg
-              </p>
-            </div>
-          )}
-        </div>
-
-        <WeightChart entries={entries} />
-
-        <form onSubmit={submit} className="space-y-2">
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <input
-                type="number"
-                step="0.1"
-                min={MIN_WEIGHT}
-                max={MAX_WEIGHT}
-                inputMode="decimal"
-                placeholder="例 72.4"
-                value={input}
-                onChange={(e) => {
-                  setInput(e.target.value);
-                  if (error) setError(null);
-                }}
-                className="sys-input pr-10"
-                disabled={busy}
-              />
-              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-sys-muted">
-                kg
-              </span>
-            </div>
-            <button
-              type="submit"
-              className="sys-button"
-              disabled={!input.trim() || busy}
-            >
-              <Plus className="h-4 w-4" />
-              {busy ? '保存中…' : '記録'}
-            </button>
-          </div>
-          {error && (
-            <p className="text-[11px] text-sys-danger">{error}</p>
-          )}
-          {recordedToday && !error && (
-            <p className="text-[10px] text-sys-muted">
-              ※ 同じ日に再記録すると最新値で上書きされます (グラフ表示)
-            </p>
-          )}
-        </form>
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] uppercase tracking-widest text-sys-muted flex items-center gap-1.5">
+          <Scale className="h-3 w-3" />
+          Body Weight
+        </p>
+        {latest && (
+          <p className="text-[10px] text-sys-muted">
+            {recordedToday ? '本日' : latest.date}
+          </p>
+        )}
       </div>
-    </SystemWindow>
+
+      <div className="flex items-end justify-between gap-3">
+        <p className="font-mono font-black leading-none text-sys-accent drop-shadow-[0_0_8px_rgba(0,212,255,0.4)]">
+          <span className="text-3xl">
+            {latest ? latest.weight.toFixed(1) : '--.-'}
+          </span>
+          <span className="ml-1 text-xs font-normal text-sys-muted">kg</span>
+        </p>
+        {delta !== null && (
+          <div className="text-right">
+            <p className="text-[10px] uppercase tracking-widest text-sys-muted">前回比</p>
+            <p
+              className={`mt-0.5 inline-flex items-center gap-0.5 font-mono text-xs ${
+                delta > 0
+                  ? 'text-sys-danger'
+                  : delta < 0
+                  ? 'text-sys-ok'
+                  : 'text-sys-muted'
+              }`}
+            >
+              {delta > 0 ? (
+                <ArrowUp className="h-3 w-3" />
+              ) : delta < 0 ? (
+                <ArrowDown className="h-3 w-3" />
+              ) : (
+                <Minus className="h-3 w-3" />
+              )}
+              {delta > 0 ? '+' : ''}
+              {delta.toFixed(1)} kg
+            </p>
+          </div>
+        )}
+      </div>
+
+      <WeightChart entries={entries} />
+
+      <form onSubmit={submit} className="space-y-2">
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <input
+              type="number"
+              step="0.1"
+              min={MIN_WEIGHT}
+              max={MAX_WEIGHT}
+              inputMode="decimal"
+              placeholder="例 72.4"
+              value={input}
+              onChange={(e) => {
+                setInput(e.target.value);
+                if (error) setError(null);
+              }}
+              className="sys-input pr-10"
+              disabled={busy}
+            />
+            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-sys-muted">
+              kg
+            </span>
+          </div>
+          <button
+            type="submit"
+            className="sys-button"
+            disabled={!input.trim() || busy}
+          >
+            <Plus className="h-4 w-4" />
+            {busy ? '保存中…' : '記録'}
+          </button>
+        </div>
+        {error && (
+          <p className="text-[11px] text-sys-danger">{error}</p>
+        )}
+      </form>
+    </div>
   );
 }
