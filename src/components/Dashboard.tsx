@@ -22,7 +22,13 @@ import { AchievementsPanel } from './AchievementsPanel';
 import { SkillsPanel } from './SkillsPanel';
 import { ResetAccountModal } from './ResetAccountModal';
 import { StatsDashboard } from './StatsDashboard';
+import { ShadowArmyPanel } from './ShadowArmyPanel';
+import { DailyBossPanel } from './DailyBossPanel';
+import { BattleSkillsPanel } from './BattleSkillsPanel';
+import { AppearanceEditor } from './AppearanceEditor';
 import { SystemWindow } from './SystemWindow';
+import { useShadows } from '../hooks/useShadows';
+import { rollShadowDrop, RARITY_LABEL } from '../lib/shadows';
 import { isQuestDoneToday, useGameData } from '../hooks/useGameData';
 import { createQuest } from '../lib/firestore';
 import type { Character, Quest } from '../types';
@@ -31,12 +37,15 @@ import {
   BarChart3,
   ChevronDown,
   ChevronUp,
+  Crown,
   History,
   LogOut,
   Plus,
   RotateCcw,
   ScrollText,
   Sparkles,
+  Swords,
+  Zap,
 } from 'lucide-react';
 
 interface ActionSheetState {
@@ -65,8 +74,16 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
   const [achOpen, setAchOpen] = useState(false);
   const [skillsOpen, setSkillsOpen] = useState(false);
   const [statsOpen, setStatsOpen] = useState(false);
+  const [shadowOpen, setShadowOpen] = useState(false);
+  const [bossOpen, setBossOpen] = useState(false);
+  const [battleSkillsOpen, setBattleSkillsOpen] = useState(false);
+  const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [actionSheet, setActionSheet] = useState<ActionSheetState | null>(null);
+
+  // Shadow army subscription. Bonuses feed into the boss panel's effective
+  // stats and (eventually) elsewhere on the dashboard.
+  const shadowData = useShadows(user.uid);
   // Explicit "what's being dragged" id, set the instant dnd-kit fires
   // onDragStart. Forwarded to each SortableQuestCard so the lift visual can
   // fire even if useSortable.isDragging propagates a tick late.
@@ -77,6 +94,33 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
     const b = game.quests.filter((q) => q.archived);
     return [a, b];
   }, [game.quests]);
+
+  // Wrap toggle to roll a shadow drop on each successful quest completion.
+  // The roll happens in JS (no Firestore involved beyond awardShadow itself),
+  // so it stays snappy and adds zero coupling to useGameData.
+  const handleQuestToggle = async (q: Quest) => {
+    const wasComplete = isQuestDoneToday(q);
+    await game.toggleQuest(q);
+    if (wasComplete) return; // toggle was an uncomplete — no drop
+    const template = rollShadowDrop(q.difficulty, q.targetStat);
+    if (!template) return;
+    const shadow = await shadowData.awardShadow(template.id);
+    if (!shadow) return;
+    game.enqueueEvent({
+      id: `shadow:${shadow.id}`,
+      kind: 'shadow',
+      title: '影を獲得',
+      primary: shadow.name,
+      secondary: `${shadow.stat} 系 / ${RARITY_LABEL[shadow.rarity]}`,
+      icon: '🌑',
+      accent:
+        shadow.rarity === 'legendary'
+          ? 'gold'
+          : shadow.rarity === 'epic'
+          ? 'purple'
+          : 'cyan',
+    });
+  };
 
   const handleDelete = (q: Parameters<typeof game.removeQuestWithRefund>[0]) => {
     const count = q.completedDates.length;
@@ -188,6 +232,21 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
             </h1>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <button type="button" className="sys-button" onClick={() => setBossOpen(true)}>
+              <Swords className="h-4 w-4" />
+              ボス
+            </button>
+            <button type="button" className="sys-button" onClick={() => setBattleSkillsOpen(true)}>
+              <Zap className="h-4 w-4" />
+              戦技
+            </button>
+            <button type="button" className="sys-button" onClick={() => setShadowOpen(true)}>
+              <Crown className="h-4 w-4" />
+              影軍団
+              <span className="ml-1 text-[10px] font-mono text-sys-accent">
+                {shadowData.equippedCount}/{shadowData.shadows.length}
+              </span>
+            </button>
             <button type="button" className="sys-button" onClick={() => setStatsOpen(true)}>
               <BarChart3 className="h-4 w-4" />
               統計
@@ -210,6 +269,25 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
                 {(character.unlocked?.skills ?? []).length}
               </span>
             </button>
+            {game.isMaster && (
+              <button
+                type="button"
+                className="sys-button"
+                title="マスター状態に再初期化"
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      'マスター状態に上書き初期化しますか?\n\nLv60 + 全stat99 + 影軍団5体の伝説でリセット (現キャラ消失)。'
+                    )
+                  ) {
+                    void game.initializeMaster();
+                  }
+                }}
+              >
+                <Sparkles className="h-4 w-4" />
+                MASTER
+              </button>
+            )}
             <button type="button" className="sys-button sys-button-danger" onClick={() => setResetOpen(true)}>
               <RotateCcw className="h-4 w-4" />
               リセット
@@ -267,7 +345,7 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
                         doneToday={isQuestDoneToday(q)}
                         busy={game.busyQuestId === q.id}
                         forceLifted={draggingId === q.id}
-                        onToggle={() => game.toggleQuest(q)}
+                        onToggle={() => handleQuestToggle(q)}
                         onOpenMenu={() =>
                           setActionSheet({ quest: q, fullIdx, isArchived: false })
                         }
@@ -324,7 +402,7 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
                       quest={q}
                       doneToday={true}
                       busy={game.busyQuestId === q.id}
-                      onToggle={() => game.toggleQuest(q)}
+                      onToggle={() => handleQuestToggle(q)}
                       onOpenMenu={() =>
                         setActionSheet({ quest: q, fullIdx: -1, isArchived: true })
                       }
@@ -343,6 +421,7 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
               onRename={game.renameCharacter}
               onAllocateStat={game.allocateStatPoint}
               onSetWeightTarget={game.setWeightTarget}
+              onEditAppearance={() => setAppearanceOpen(true)}
             />
 
             <SystemWindow title="Today" subtitle="progress">
@@ -442,6 +521,43 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
         character={character}
         quests={game.quests}
         onClose={() => setStatsOpen(false)}
+      />
+      <ShadowArmyPanel
+        open={shadowOpen}
+        shadows={shadowData.shadows}
+        onClose={() => setShadowOpen(false)}
+        onEquip={shadowData.equipShadow}
+        onUnequip={shadowData.unequipShadow}
+        onDiscard={shadowData.discardShadow}
+      />
+      <BattleSkillsPanel
+        open={battleSkillsOpen}
+        character={character}
+        onClose={() => setBattleSkillsOpen(false)}
+        onSave={game.setEquippedSkills}
+      />
+      <AppearanceEditor
+        open={appearanceOpen}
+        current={character.appearance}
+        onClose={() => setAppearanceOpen(false)}
+        onSave={game.updateAppearance}
+      />
+      <DailyBossPanel
+        open={bossOpen}
+        uid={user.uid}
+        character={character}
+        shadowBonus={shadowData.bonus}
+        onClose={() => setBossOpen(false)}
+        onAwardShadow={async (templateId) => {
+          const shadow = await shadowData.awardShadow(templateId);
+          if (!shadow) return null;
+          return { id: shadow.id, name: shadow.name };
+        }}
+        onIncrementFloor={game.incrementBossesDefeated}
+        // Boss results are already displayed inside the boss panel itself
+        // (victory + extraction UI, defeat + retry button). Suppress the
+        // center-screen SystemToast so it doesn't cover the panel.
+        onEnqueueBossEvent={() => undefined}
       />
       <AchievementsPanel open={achOpen} character={character} onClose={() => setAchOpen(false)} />
       <SkillsPanel open={skillsOpen} character={character} onClose={() => setSkillsOpen(false)} />

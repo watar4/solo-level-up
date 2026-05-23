@@ -37,6 +37,14 @@ export const EMPTY_UNLOCK: UnlockState = {
   skillDates: {},
 };
 
+export type HunterClass = 'knight' | 'mage' | 'hunter' | 'scout';
+
+export interface HunterAppearance {
+  hunterClass: HunterClass;
+  primaryColor: string; // hex — outfit/weapon main color
+  accentColor: string;  // hex — accent (cape/hood/etc.)
+}
+
 export interface Character {
   uid: string;
   name: string;
@@ -50,6 +58,12 @@ export interface Character {
   unlocked?: UnlockState;
   title?: string;     // currently-equipped title from an achievement
   weightTarget?: number; // kg, one decimal — drives target line on the chart
+  appearance?: HunterAppearance;
+  // IDs of battle skills the player has equipped (max 5, used in combat).
+  // Distinct from the achievement-style "unlocked.skills" tags above.
+  equippedSkills?: string[];
+  // Continuous-mode boss tower progress. Floor = bossesDefeated + 1.
+  bossesDefeated?: number;
 }
 
 export type QuestType = 'daily' | 'weekly' | 'one-time';
@@ -85,7 +99,33 @@ export interface WeightEntry {
   createdAt: number;
 }
 
-export type SystemEventKind = 'level-up' | 'achievement' | 'skill';
+export type ShadowRarity = 'normal' | 'rare' | 'epic' | 'legendary';
+
+export const SHADOW_RARITY_ORDER: ShadowRarity[] = ['legendary', 'epic', 'rare', 'normal'];
+
+export interface Shadow {
+  id: string;
+  uid: string;
+  templateId: string;   // points into the SHADOW_TEMPLATES table
+  name: string;         // resolved display name (denormalised for offline read)
+  stat: StatKey;        // primary stat this shadow aligns to
+  rarity: ShadowRarity;
+  equipped: boolean;
+  createdAt: number;
+}
+
+export interface BossAttempt {
+  id: string;
+  uid: string;
+  date: string;         // YYYY-MM-DD — the boss's seed key
+  bossId: string;       // template id
+  won: boolean;
+  turnsUsed: number;
+  damageDealt: number;
+  createdAt: number;
+}
+
+export type SystemEventKind = 'level-up' | 'achievement' | 'skill' | 'shadow' | 'boss';
 
 export interface SystemEvent {
   id: string;

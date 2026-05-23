@@ -14,7 +14,15 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import type { Character, Quest, StatKey, WeightEntry } from '../types';
+import type {
+  BossAttempt,
+  Character,
+  HunterAppearance,
+  Quest,
+  Shadow,
+  StatKey,
+  WeightEntry,
+} from '../types';
 import { ALL_STATS } from '../types';
 
 function requireDb() {
@@ -28,7 +36,11 @@ export async function loadCharacter(uid: string): Promise<Character | null> {
   return snap.data() as Character;
 }
 
-export async function createCharacter(uid: string, name: string): Promise<Character> {
+export async function createCharacter(
+  uid: string,
+  name: string,
+  appearance?: HunterAppearance
+): Promise<Character> {
   const stats = Object.fromEntries(ALL_STATS.map((s) => [s, 10])) as Record<StatKey, number>;
   const now = Date.now();
   const character: Character = {
@@ -41,6 +53,7 @@ export async function createCharacter(uid: string, name: string): Promise<Charac
     statPoints: 0,
     createdAt: now,
     lastSeenAt: now,
+    ...(appearance ? { appearance } : {}),
   };
   await setDoc(doc(requireDb(), 'characters', uid), character);
   return character;
@@ -208,4 +221,72 @@ export async function addWeightEntry(entry: Omit<WeightEntry, 'id'>): Promise<st
 
 export async function deleteWeightEntry(id: string): Promise<void> {
   await deleteDoc(doc(requireDb(), 'weightEntries', id));
+}
+
+// --- Shadow army --------------------------------------------------------
+
+export function subscribeShadows(
+  uid: string,
+  onChange: (shadows: Shadow[]) => void,
+  onError?: (err: Error) => void
+): () => void {
+  const q = query(collection(requireDb(), 'shadows'), where('uid', '==', uid));
+  return onSnapshot(
+    q,
+    (snap) => {
+      const shadows: Shadow[] = [];
+      snap.forEach((s) => {
+        const data = s.data() as Omit<Shadow, 'id'>;
+        shadows.push({ ...data, id: s.id });
+      });
+      // Newest first as a stable default. The UI re-groups by rarity etc.
+      shadows.sort((a, b) => b.createdAt - a.createdAt);
+      onChange(shadows);
+    },
+    (err) => {
+      console.error('[shadows:subscribe] failed', err);
+      onError?.(err);
+    }
+  );
+}
+
+export async function addShadow(shadow: Omit<Shadow, 'id'>): Promise<string> {
+  const ref = await addDoc(collection(requireDb(), 'shadows'), shadow);
+  return ref.id;
+}
+
+export async function updateShadow(
+  id: string,
+  patch: Partial<Shadow>
+): Promise<void> {
+  await updateDoc(doc(requireDb(), 'shadows', id), patch as Record<string, unknown>);
+}
+
+export async function deleteShadow(id: string): Promise<void> {
+  await deleteDoc(doc(requireDb(), 'shadows', id));
+}
+
+// --- Boss attempts ------------------------------------------------------
+
+export async function addBossAttempt(
+  attempt: Omit<BossAttempt, 'id'>
+): Promise<string> {
+  const ref = await addDoc(collection(requireDb(), 'bossAttempts'), attempt);
+  return ref.id;
+}
+
+export async function getBossAttemptsForDate(
+  uid: string,
+  date: string
+): Promise<BossAttempt[]> {
+  const q = query(
+    collection(requireDb(), 'bossAttempts'),
+    where('uid', '==', uid),
+    where('date', '==', date)
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => {
+    const data = d.data() as Omit<BossAttempt, 'id'>;
+    return { ...data, id: d.id };
+  });
 }

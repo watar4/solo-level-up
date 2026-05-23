@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Character, StatKey } from '../types';
 import { ALL_STATS, STAT_LABELS } from '../types';
 import { expForLevel, rankForLevel } from '../lib/leveling';
 import { SystemWindow } from './SystemWindow';
 import { WeightPanel } from './WeightPanel';
-import { Pencil, Plus } from 'lucide-react';
+import { PixelArt } from './PixelArt';
+import { DEFAULT_APPEARANCE, renderClassSprite } from '../lib/playerSprites';
+import { Palette, Pencil, Plus } from 'lucide-react';
 
 interface Props {
   character: Character;
@@ -13,6 +15,7 @@ interface Props {
   onRename: (name: string) => Promise<void>;
   onAllocateStat: (stat: StatKey) => Promise<void>;
   onSetWeightTarget: (target: number | null) => Promise<void>;
+  onEditAppearance: () => void;
 }
 
 const RANK_COLORS: Record<string, string> = {
@@ -32,6 +35,7 @@ export function StatusPanel({
   onRename,
   onAllocateStat,
   onSetWeightTarget,
+  onEditAppearance,
 }: Props) {
   const rank = rankForLevel(character.level);
   const need = expForLevel(character.level);
@@ -41,6 +45,11 @@ export function StatusPanel({
   const [draft, setDraft] = useState(character.name);
   const [saving, setSaving] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const sprite = useMemo(() => {
+    const a = character.appearance ?? DEFAULT_APPEARANCE;
+    return renderClassSprite(a.hunterClass, a.primaryColor, a.accentColor);
+  }, [character.appearance]);
 
   useEffect(() => {
     if (editing) {
@@ -77,7 +86,24 @@ export function StatusPanel({
   return (
     <SystemWindow title="Status" subtitle={email ?? ''}>
       <div className="space-y-5">
-        <div>
+        <div className="flex items-start gap-3">
+          <button
+            type="button"
+            onClick={onEditAppearance}
+            title="外見を編集"
+            aria-label="外見を編集"
+            className="shrink-0 relative border border-sys-border/40 bg-black/40 p-1 hover:border-sys-accent transition group"
+          >
+            <PixelArt
+              layers={[{ grid: sprite.grid, palette: sprite.palette }]}
+              pixelSize={4}
+              ariaLabel={character.name}
+            />
+            <span className="absolute bottom-0.5 right-0.5 opacity-0 group-hover:opacity-100 bg-black/70 p-0.5 rounded transition">
+              <Palette className="h-3 w-3 text-sys-accent" />
+            </span>
+          </button>
+          <div className="min-w-0 flex-1">
           <div className="flex items-end justify-between gap-3">
             {editing ? (
               <input
@@ -128,6 +154,7 @@ export function StatusPanel({
                 +{character.statPoints} POINTS
               </span>
             )}
+          </div>
           </div>
         </div>
 

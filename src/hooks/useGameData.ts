@@ -12,9 +12,18 @@ import {
   getCompletionsForQuest,
   getAllCompletions,
   deleteCompletions,
+  addShadow,
 } from '../lib/firestore';
+import {
+  buildMasterCharacter,
+  buildMasterShadows,
+  isMasterEmail,
+} from '../lib/masterConfig';
+import { doc, setDoc } from 'firebase/firestore';
+import { db } from '../firebase';
 import type {
   Character,
+  HunterAppearance,
   Quest,
   StatKey,
   SystemEvent,
@@ -53,16 +62,28 @@ export interface GameData {
   busyQuestId: string | null;
   pendingEvents: SystemEvent[];
   popEvent: () => void;
-  createCharacterWithName: (name: string) => Promise<void>;
+  createCharacterWithName: (name: string, appearance?: HunterAppearance) => Promise<void>;
   toggleQuest: (quest: Quest) => Promise<void>;
   removeQuestWithRefund: (quest: Quest) => Promise<void>;
   editQuest: (quest: Quest, patch: QuestEditPatch) => Promise<void>;
   moveQuest: (quest: Quest, direction: 'up' | 'down') => Promise<void>;
   reorderActive: (from: number, to: number) => Promise<void>;
   renameCharacter: (name: string) => Promise<void>;
+  updateAppearance: (appearance: HunterAppearance) => Promise<void>;
+  setEquippedSkills: (skillIds: string[]) => Promise<void>;
+  incrementBossesDefeated: () => Promise<void>;
   allocateStatPoint: (stat: StatKey) => Promise<void>;
   setWeightTarget: (target: number | null) => Promise<void>;
   resetAccount: () => Promise<void>;
+  // Master-only: overwrite the current character + grant 5 legendary
+  // shadows. Visible/usable in the UI only for emails in MASTER_EMAILS.
+  initializeMaster: () => Promise<void>;
+  isMaster: boolean;
+  // Lets external systems (shadow drops, boss rewards) push events into the
+  // shared SystemToast queue.
+  enqueueEvent: (event: SystemEvent) => void;
+  // Apply EXP gained from non-quest sources (boss reward, etc).
+  awardExp: (amount: number) => Promise<void>;
 }
 
 function isQuestDoneToday(quest: Quest): boolean {
@@ -195,10 +216,29 @@ export function useGameData(user: User | null): GameData {
     }
     setLoading(true);
     loadCharacter(user.uid)
-      .then((c) => {
+      .then(async (c) => {
         if (cancelled) return;
-        setCharacter(c);
-        setNeedsCharacter(!c);
+        if (!c && isMasterEmail(user.email)) {
+          // Master email signing in for the first time — skip the regular
+          // character-creation step and provision a maxed account directly.
+          const master = buildMasterCharacter(user.uid);
+          if (db) await setDoc(doc(db, 'characters', user.uid), master);
+          // Seed legendary shadow army (fire-and-forget so combat is
+          // already playable once the dashboard renders).
+          for (const s of buildMasterShadows(user.uid)) {
+            try {
+              await addShadow(s);
+            } catch (err) {
+              console.error('[master] shadow seed failed', err);
+            }
+          }
+          if (cancelled) return;
+          setCharacter(master);
+          setNeedsCharacter(false);
+        } else {
+          setCharacter(c);
+          setNeedsCharacter(!c);
+        }
         setLoading(false);
       })
       .catch((err) => {
@@ -233,9 +273,13 @@ export function useGameData(user: User | null): GameData {
   }, [user, character?.uid, quests.length]);
 
   const createCharacterWithName = useCallback(
-    async (name: string) => {
+    async (name: string, appearance?: HunterAppearance) => {
       if (!user) return;
-      const c = await createCharacter(user.uid, name.trim() || 'Hunter');
+      const c = await createCharacter(
+        user.uid,
+        name.trim() || 'Hunter',
+        appearance
+      );
       setCharacter(c);
       setNeedsCharacter(false);
     },
@@ -538,6 +582,50 @@ export function useGameData(user: User | null): GameData {
     [user, character]
   );
 
+  const updateAppearance = useCallback(
+    async (appearance: HunterAppearance): Promise<void> => {
+      if (!user || !character) return;
+      await updateCharacter(user.uid, { appearance });
+      setCharacter({ ...character, appearance });
+    },
+    [user, character]
+  );
+
+  const setEquippedSkills = useCallback(
+    async (skillIds: string[]): Promise<void> => {
+      if (!user || !character) return;
+      const trimmed = skillIds.slice(0, 5);
+      await updateCharacter(user.uid, { equippedSkills: trimmed });
+      setCharacter({ ...character, equippedSkills: trimmed });
+    },
+    [user, character]
+  );
+
+  const incrementBossesDefeated = useCallback(async (): Promise<void> => {
+    if (!user || !character) return;
+    const next = (character.bossesDefeated ?? 0) + 1;
+    await updateCharacter(user.uid, { bossesDefeated: next });
+    setCharacter({ ...character, bossesDefeated: next });
+  }, [user, character]);
+
+  // Master-only — overwrite the current character with the maxed seed and
+  // top up the shadow army. Gated by isMasterEmail at the UI layer so a
+  // regular user can never reach this branch.
+  const initializeMaster = useCallback(async (): Promise<void> => {
+    if (!user || !isMasterEmail(user.email)) return;
+    const master = buildMasterCharacter(user.uid);
+    if (db) await setDoc(doc(db, 'characters', user.uid), master);
+    for (const s of buildMasterShadows(user.uid)) {
+      try {
+        await addShadow(s);
+      } catch (err) {
+        console.error('[master] shadow seed failed', err);
+      }
+    }
+    setCharacter(master);
+    setNeedsCharacter(false);
+  }, [user]);
+
   const allocateStatPoint = useCallback(
     async (stat: StatKey): Promise<void> => {
       if (!user || !character || character.statPoints <= 0) return;
@@ -583,6 +671,70 @@ export function useGameData(user: User | null): GameData {
     [user, character]
   );
 
+  const enqueueEvent = useCallback(
+    (event: SystemEvent) => {
+      enqueue([event]);
+    },
+    [enqueue]
+  );
+
+  const awardExp = useCallback(
+    async (amount: number): Promise<void> => {
+      if (!user || !character || amount <= 0) return;
+      const oldLevel = character.level;
+      const result = applyExp(
+        character.level,
+        character.exp,
+        character.totalExp,
+        amount
+      );
+      const updated: Character = {
+        ...character,
+        level: result.level,
+        exp: result.exp,
+        totalExp: result.totalExp,
+        statPoints: character.statPoints + result.statPointsGained,
+        lastSeenAt: Date.now(),
+      };
+      setCharacter(updated);
+      await updateCharacter(user.uid, {
+        level: updated.level,
+        exp: updated.exp,
+        totalExp: updated.totalExp,
+        statPoints: updated.statPoints,
+        lastSeenAt: updated.lastSeenAt,
+      });
+      if (result.levelsGained > 0) {
+        const events: SystemEvent[] = [
+          {
+            id: `level-up:boss:${Date.now()}`,
+            kind: 'level-up',
+            title: 'Level Up!',
+            primary: `Lv.${oldLevel} → Lv.${result.level}`,
+            secondary: `+${result.statPointsGained} ステータスポイント`,
+            icon: '⭐',
+            accent: 'cyan',
+          },
+        ];
+        const oldRank = rankForLevel(oldLevel);
+        const newRank = rankForLevel(result.level);
+        if (oldRank !== newRank) {
+          events.push({
+            id: `rank-up:boss:${Date.now()}`,
+            kind: 'level-up',
+            title: 'ランクアップ',
+            primary: `${oldRank}  →  ${newRank}`,
+            secondary: `${newRank} ランクハンターに昇格`,
+            icon: '🏅',
+            accent: 'gold',
+          });
+        }
+        enqueue(events);
+      }
+    },
+    [user, character, enqueue]
+  );
+
   const popEvent = useCallback(() => {
     setPendingEvents((prev) => prev.slice(1));
   }, []);
@@ -622,9 +774,16 @@ export function useGameData(user: User | null): GameData {
     moveQuest,
     reorderActive,
     renameCharacter,
+    updateAppearance,
+    setEquippedSkills,
+    incrementBossesDefeated,
     allocateStatPoint,
     setWeightTarget,
     resetAccount,
+    enqueueEvent,
+    awardExp,
+    initializeMaster,
+    isMaster: isMasterEmail(user?.email),
   };
 }
 

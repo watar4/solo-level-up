@@ -1,93 +1,94 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { X } from 'lucide-react';
 import { SystemWindow } from './SystemWindow';
-import { Sword } from 'lucide-react';
 import { PixelArt } from './PixelArt';
 import {
   ACCENT_COLORS,
   CLASS_TEMPLATES,
   PRIMARY_COLORS,
   renderClassSprite,
+  DEFAULT_APPEARANCE,
 } from '../lib/playerSprites';
 import type { HunterAppearance, HunterClass } from '../types';
 
 interface Props {
-  onCreate: (name: string, appearance: HunterAppearance) => Promise<void>;
+  open: boolean;
+  current: HunterAppearance | undefined;
+  onClose: () => void;
+  onSave: (appearance: HunterAppearance) => Promise<void>;
 }
 
 const CLASS_ORDER: HunterClass[] = ['knight', 'mage', 'hunter', 'scout'];
 
-export function CharacterCreation({ onCreate }: Props) {
-  const [name, setName] = useState('');
-  const [hunterClass, setHunterClass] = useState<HunterClass>('knight');
-  const [primaryColor, setPrimaryColor] = useState(
-    CLASS_TEMPLATES.knight.preview.primary
-  );
-  const [accentColor, setAccentColor] = useState(
-    CLASS_TEMPLATES.knight.preview.accent
-  );
+export function AppearanceEditor({ open, current, onClose, onSave }: Props) {
+  const initial = current ?? DEFAULT_APPEARANCE;
+  const [hunterClass, setHunterClass] = useState<HunterClass>(initial.hunterClass);
+  const [primaryColor, setPrimaryColor] = useState<string>(initial.primaryColor);
+  const [accentColor, setAccentColor] = useState<string>(initial.accentColor);
   const [busy, setBusy] = useState(false);
+
+  // Re-sync local state when the modal opens so cancel + reopen shows the
+  // saved values, not whatever the user left mid-edit last time.
+  useEffect(() => {
+    if (!open) return;
+    setHunterClass(initial.hunterClass);
+    setPrimaryColor(initial.primaryColor);
+    setAccentColor(initial.accentColor);
+  }, [open, initial.hunterClass, initial.primaryColor, initial.accentColor]);
 
   const sprite = useMemo(
     () => renderClassSprite(hunterClass, primaryColor, accentColor),
     [hunterClass, primaryColor, accentColor]
   );
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim() || busy) return;
+  const pickClass = (next: HunterClass) => {
+    setHunterClass(next);
+    // Snap palette to the class's signature colors when switching, so
+    // changing class doesn't leave a weirdly-coloured Mage etc.
+    setPrimaryColor(CLASS_TEMPLATES[next].preview.primary);
+    setAccentColor(CLASS_TEMPLATES[next].preview.accent);
+  };
+
+  const save = async () => {
+    if (busy) return;
     setBusy(true);
     try {
-      await onCreate(name, { hunterClass, primaryColor, accentColor });
+      await onSave({ hunterClass, primaryColor, accentColor });
+      onClose();
     } finally {
       setBusy(false);
     }
   };
 
-  const pickClass = (next: HunterClass) => {
-    setHunterClass(next);
-    // Snap to the class's signature palette so each switch feels intentional.
-    setPrimaryColor(CLASS_TEMPLATES[next].preview.primary);
-    setAccentColor(CLASS_TEMPLATES[next].preview.accent);
-  };
+  if (!open) return null;
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 py-8">
-      <div className="w-full max-w-lg">
-        <SystemWindow title="ハンター登録" subtitle="initialise">
-          <form onSubmit={submit} className="space-y-5">
-            <p className="text-sm text-sys-text/80">
-              これより貴方は
-              <span className="text-sys-accent font-bold">Eランクハンター</span>
-              として記録される。<br />
-              名と姿を選べ。
-            </p>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm overflow-y-auto"
+      onClick={onClose}
+    >
+      <div className="w-full max-w-lg my-auto" onClick={(e) => e.stopPropagation()}>
+        <SystemWindow title="Appearance Edit" subtitle="reforge">
+          <div className="flex justify-end mb-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="text-sys-muted hover:text-sys-text"
+              aria-label="閉じる"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
 
-            {/* Preview */}
+          <div className="space-y-4">
             <div className="flex justify-center border border-sys-border/40 bg-black/40 p-4">
               <PixelArt
                 layers={[{ grid: sprite.grid, palette: sprite.palette }]}
                 pixelSize={10}
-                ariaLabel="キャラクタープレビュー"
+                ariaLabel="プレビュー"
               />
             </div>
 
-            {/* Name */}
-            <label className="block">
-              <span className="block text-xs uppercase tracking-widest text-sys-muted mb-2">
-                Hunter Name
-              </span>
-              <input
-                type="text"
-                className="sys-input"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="例: 影"
-                maxLength={20}
-                autoFocus
-              />
-            </label>
-
-            {/* Class */}
             <div>
               <span className="block text-xs uppercase tracking-widest text-sys-muted mb-2">
                 Class
@@ -137,7 +138,6 @@ export function CharacterCreation({ onCreate }: Props) {
               </div>
             </div>
 
-            {/* Colors */}
             <div className="grid grid-cols-2 gap-3">
               <ColorRow
                 label="主色"
@@ -153,15 +153,24 @@ export function CharacterCreation({ onCreate }: Props) {
               />
             </div>
 
-            <button
-              type="submit"
-              className="sys-button w-full justify-center py-3"
-              disabled={!name.trim() || busy}
-            >
-              <Sword className="h-4 w-4" />
-              {busy ? '召喚中…' : 'ステータスを開く'}
-            </button>
-          </form>
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="sys-button flex-1 justify-center"
+              >
+                キャンセル
+              </button>
+              <button
+                type="button"
+                onClick={save}
+                className="sys-button flex-1 justify-center"
+                disabled={busy}
+              >
+                {busy ? '保存中…' : '保存'}
+              </button>
+            </div>
+          </div>
         </SystemWindow>
       </div>
     </div>
