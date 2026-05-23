@@ -329,7 +329,12 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
           </SystemWindow>
 
           <div className="space-y-6">
-            <StatusPanel character={character} email={user.email} uid={user.uid} />
+            <StatusPanel
+              character={character}
+              email={user.email}
+              uid={user.uid}
+              onRename={game.renameCharacter}
+            />
 
             <SystemWindow title="Today" subtitle="progress">
               <div className="space-y-2">

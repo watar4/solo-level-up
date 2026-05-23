@@ -1,13 +1,16 @@
+import { useEffect, useRef, useState } from 'react';
 import type { Character } from '../types';
 import { ALL_STATS, STAT_LABELS } from '../types';
 import { expForLevel, rankForLevel } from '../lib/leveling';
 import { SystemWindow } from './SystemWindow';
 import { WeightPanel } from './WeightPanel';
+import { Pencil } from 'lucide-react';
 
 interface Props {
   character: Character;
   email?: string | null;
   uid: string;
+  onRename: (name: string) => Promise<void>;
 }
 
 const RANK_COLORS: Record<string, string> = {
@@ -20,17 +23,85 @@ const RANK_COLORS: Record<string, string> = {
   SS: 'text-rose-300',
 };
 
-export function StatusPanel({ character, email, uid }: Props) {
+export function StatusPanel({ character, email, uid, onRename }: Props) {
   const rank = rankForLevel(character.level);
   const need = expForLevel(character.level);
   const pct = Math.min(100, Math.round((character.exp / need) * 100));
+
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(character.name);
+  const [saving, setSaving] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editing) {
+      setDraft(character.name);
+      // Autofocus + select on entering edit mode.
+      requestAnimationFrame(() => {
+        inputRef.current?.focus();
+        inputRef.current?.select();
+      });
+    }
+  }, [editing, character.name]);
+
+  const commit = async () => {
+    const trimmed = draft.trim();
+    if (!trimmed || saving) {
+      setEditing(false);
+      return;
+    }
+    if (trimmed === character.name) {
+      setEditing(false);
+      return;
+    }
+    setSaving(true);
+    try {
+      await onRename(trimmed);
+    } catch (err) {
+      console.error('[character:rename] failed', err);
+    } finally {
+      setSaving(false);
+      setEditing(false);
+    }
+  };
 
   return (
     <SystemWindow title="Status" subtitle={email ?? ''}>
       <div className="space-y-5">
         <div>
-          <div className="flex items-end justify-between">
-            <h2 className="text-2xl font-black tracking-wider">{character.name}</h2>
+          <div className="flex items-end justify-between gap-3">
+            {editing ? (
+              <input
+                ref={inputRef}
+                type="text"
+                value={draft}
+                maxLength={24}
+                disabled={saving}
+                onChange={(e) => setDraft(e.target.value)}
+                onBlur={commit}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    void commit();
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    setEditing(false);
+                  }
+                }}
+                className="sys-input min-w-0 flex-1 text-2xl font-black tracking-wider"
+                aria-label="ハンター名を編集"
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => setEditing(true)}
+                title="ハンター名を編集"
+                className="group inline-flex items-center gap-2 text-2xl font-black tracking-wider text-left hover:text-sys-accent transition"
+              >
+                <span className="truncate">{character.name}</span>
+                <Pencil className="h-3.5 w-3.5 opacity-40 group-hover:opacity-100 transition" />
+              </button>
+            )}
             <div className={`text-right ${RANK_COLORS[rank] ?? ''}`}>
               <div className="text-[10px] uppercase tracking-widest text-sys-muted">Rank</div>
               <div className="text-3xl font-black leading-none drop-shadow-[0_0_8px_currentColor]">

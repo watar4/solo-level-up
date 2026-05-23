@@ -59,6 +59,7 @@ export interface GameData {
   editQuest: (quest: Quest, patch: QuestEditPatch) => Promise<void>;
   moveQuest: (quest: Quest, direction: 'up' | 'down') => Promise<void>;
   reorderActive: (from: number, to: number) => Promise<void>;
+  renameCharacter: (name: string) => Promise<void>;
   resetAccount: () => Promise<void>;
 }
 
@@ -524,6 +525,17 @@ export function useGameData(user: User | null): GameData {
     [quests]
   );
 
+  const renameCharacter = useCallback(
+    async (name: string): Promise<void> => {
+      if (!user || !character) return;
+      const trimmed = name.trim() || 'Hunter';
+      if (trimmed === character.name) return;
+      await updateCharacter(user.uid, { name: trimmed });
+      setCharacter({ ...character, name: trimmed });
+    },
+    [user, character]
+  );
+
   const popEvent = useCallback(() => {
     setPendingEvents((prev) => prev.slice(1));
   }, []);
@@ -562,6 +574,7 @@ export function useGameData(user: User | null): GameData {
     editQuest,
     moveQuest,
     reorderActive,
+    renameCharacter,
     resetAccount,
   };
 }
