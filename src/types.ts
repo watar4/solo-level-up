@@ -49,6 +49,7 @@ export interface Character {
   lastSeenAt: number;
   unlocked?: UnlockState;
   title?: string;     // currently-equipped title from an achievement
+  weightTarget?: number; // kg, one decimal — drives target line on the chart
 }
 
 export type QuestType = 'daily' | 'weekly' | 'one-time';

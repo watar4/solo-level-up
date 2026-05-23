@@ -1,11 +1,13 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { WeightChart } from './WeightChart';
 import { useWeights } from '../hooks/useWeights';
 import { todayKey } from '../lib/leveling';
-import { Scale, Plus, ArrowDown, ArrowUp, Minus } from 'lucide-react';
+import { Scale, Plus, ArrowDown, ArrowUp, Minus, Target, Pencil, X } from 'lucide-react';
 
 interface Props {
   uid: string;
+  target?: number;
+  onSetTarget?: (target: number | null) => Promise<void>;
 }
 
 const MIN_WEIGHT = 20;
@@ -14,11 +16,55 @@ const MAX_WEIGHT = 300;
 // Section embedded inside StatusPanel — renders only its content (no
 // SystemWindow wrapper) so the body-weight readout / chart / input form
 // share the same surrounding frame as the rest of the Status block.
-export function WeightPanel({ uid }: Props) {
+export function WeightPanel({ uid, target, onSetTarget }: Props) {
   const { entries, recordWeight } = useWeights(uid);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Target-weight inline editor — mirrors the rename UX in StatusPanel.
+  const [targetEditing, setTargetEditing] = useState(false);
+  const [targetDraft, setTargetDraft] = useState(
+    target !== undefined ? target.toFixed(1) : ''
+  );
+  const targetInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (targetEditing) {
+      setTargetDraft(target !== undefined ? target.toFixed(1) : '');
+      requestAnimationFrame(() => {
+        targetInputRef.current?.focus();
+        targetInputRef.current?.select();
+      });
+    }
+  }, [targetEditing, target]);
+
+  const commitTarget = async () => {
+    if (!onSetTarget) {
+      setTargetEditing(false);
+      return;
+    }
+    const raw = targetDraft.trim();
+    if (raw === '') {
+      // Clear target only if it was previously set.
+      if (target !== undefined) await onSetTarget(null);
+      setTargetEditing(false);
+      return;
+    }
+    const num = parseFloat(raw);
+    if (isNaN(num) || num < MIN_WEIGHT || num > MAX_WEIGHT) {
+      setTargetEditing(false);
+      return;
+    }
+    if (num !== target) {
+      await onSetTarget(num);
+    }
+    setTargetEditing(false);
+  };
+
+  const clearTarget = async () => {
+    if (!onSetTarget) return;
+    await onSetTarget(null);
+  };
 
   const { latest, prior } = useMemo(() => {
     if (entries.length === 0) return { latest: null, prior: null };
@@ -37,6 +83,7 @@ export function WeightPanel({ uid }: Props) {
 
   const delta = latest && prior ? latest.weight - prior.weight : null;
   const recordedToday = latest?.date === todayKey();
+  const toGoal = latest && target !== undefined ? latest.weight - target : null;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -107,7 +154,76 @@ export function WeightPanel({ uid }: Props) {
         )}
       </div>
 
-      <WeightChart entries={entries} />
+      {onSetTarget && (
+        <div className="flex items-center justify-between gap-2 border border-sys-border/20 bg-black/20 px-2.5 py-1.5">
+          <span className="text-[10px] uppercase tracking-widest text-sys-muted flex items-center gap-1.5">
+            <Target className="h-3 w-3" />
+            目標
+          </span>
+          {targetEditing ? (
+            <input
+              ref={targetInputRef}
+              type="number"
+              step="0.1"
+              min={MIN_WEIGHT}
+              max={MAX_WEIGHT}
+              inputMode="decimal"
+              value={targetDraft}
+              onChange={(e) => setTargetDraft(e.target.value)}
+              onBlur={commitTarget}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  void commitTarget();
+                } else if (e.key === 'Escape') {
+                  e.preventDefault();
+                  setTargetEditing(false);
+                }
+              }}
+              placeholder="例 68.0"
+              className="sys-input w-24 text-right py-1"
+            />
+          ) : (
+            <div className="flex items-center gap-2">
+              {toGoal !== null && (
+                <span
+                  className={`text-[10px] font-mono ${
+                    Math.abs(toGoal) < 0.05
+                      ? 'text-sys-ok'
+                      : 'text-sys-muted'
+                  }`}
+                >
+                  {Math.abs(toGoal) < 0.05
+                    ? '達成!'
+                    : `あと ${toGoal > 0 ? '-' : '+'}${Math.abs(toGoal).toFixed(1)} kg`}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => setTargetEditing(true)}
+                className="inline-flex items-center gap-1 font-mono text-sm text-sys-text hover:text-sys-accent transition"
+                title="目標体重を編集"
+              >
+                {target !== undefined ? `${target.toFixed(1)} kg` : '未設定'}
+                <Pencil className="h-3 w-3 opacity-50" />
+              </button>
+              {target !== undefined && (
+                <button
+                  type="button"
+                  onClick={() => void clearTarget()}
+                  className="text-sys-muted/60 hover:text-sys-danger transition"
+                  title="目標を解除"
+                  aria-label="目標を解除"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      <WeightChart entries={entries} target={target} />
 
       <form onSubmit={submit} className="space-y-2">
         <div className="flex gap-2">

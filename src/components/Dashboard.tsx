@@ -334,6 +334,8 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
               email={user.email}
               uid={user.uid}
               onRename={game.renameCharacter}
+              onAllocateStat={game.allocateStatPoint}
+              onSetWeightTarget={game.setWeightTarget}
             />
 
             <SystemWindow title="Today" subtitle="progress">

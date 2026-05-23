@@ -1,16 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Character } from '../types';
+import type { Character, StatKey } from '../types';
 import { ALL_STATS, STAT_LABELS } from '../types';
 import { expForLevel, rankForLevel } from '../lib/leveling';
 import { SystemWindow } from './SystemWindow';
 import { WeightPanel } from './WeightPanel';
-import { Pencil } from 'lucide-react';
+import { Pencil, Plus } from 'lucide-react';
 
 interface Props {
   character: Character;
   email?: string | null;
   uid: string;
   onRename: (name: string) => Promise<void>;
+  onAllocateStat: (stat: StatKey) => Promise<void>;
+  onSetWeightTarget: (target: number | null) => Promise<void>;
 }
 
 const RANK_COLORS: Record<string, string> = {
@@ -23,7 +25,14 @@ const RANK_COLORS: Record<string, string> = {
   SS: 'text-rose-300',
 };
 
-export function StatusPanel({ character, email, uid, onRename }: Props) {
+export function StatusPanel({
+  character,
+  email,
+  uid,
+  onRename,
+  onAllocateStat,
+  onSetWeightTarget,
+}: Props) {
   const rank = rankForLevel(character.level);
   const need = expForLevel(character.level);
   const pct = Math.min(100, Math.round((character.exp / need) * 100));
@@ -152,15 +161,32 @@ export function StatusPanel({ character, email, uid, onRename }: Props) {
                 </span>
                 <span className="text-xs text-sys-text/70">{STAT_LABELS[s].jp}</span>
               </span>
-              <span className="font-mono text-xl font-bold text-sys-text">
-                {character.stats[s]}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-xl font-bold text-sys-text">
+                  {character.stats[s]}
+                </span>
+                {character.statPoints > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => void onAllocateStat(s)}
+                    aria-label={`${STAT_LABELS[s].en} に 1 ポイント振り分け`}
+                    title={`${STAT_LABELS[s].en} +1`}
+                    className="flex h-6 w-6 items-center justify-center border border-sys-gold/60 bg-sys-gold/10 text-sys-gold hover:bg-sys-gold/25 hover:border-sys-gold/90 active:translate-y-px transition"
+                  >
+                    <Plus className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
             </div>
           ))}
         </div>
 
         <div className="border-t border-sys-border/20 pt-4">
-          <WeightPanel uid={uid} />
+          <WeightPanel
+            uid={uid}
+            target={character.weightTarget}
+            onSetTarget={onSetWeightTarget}
+          />
         </div>
 
         <div className="border-t border-sys-border/20 pt-3 text-[11px] text-sys-muted">

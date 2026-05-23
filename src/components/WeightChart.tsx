@@ -2,6 +2,7 @@ import type { WeightEntry } from '../types';
 
 interface Props {
   entries: WeightEntry[]; // expected sorted oldest-first
+  target?: number;        // kg — draw a dashed reference line at this y
 }
 
 const VIEW_W = 320;
@@ -25,7 +26,7 @@ function formatTick(date: string): string {
   return `${parseInt(m, 10)}/${parseInt(d, 10)}`;
 }
 
-export function WeightChart({ entries }: Props) {
+export function WeightChart({ entries, target }: Props) {
   const points = dailyPoints(entries);
 
   if (points.length === 0) {
@@ -37,10 +38,11 @@ export function WeightChart({ entries }: Props) {
   }
 
   const weights = points.map((p) => p.weight);
-  const minW = Math.min(...weights);
-  const maxW = Math.max(...weights);
-  // Pad the y-range slightly so the line doesn't hug the top/bottom edges.
-  // For a single-point series fall back to a synthetic ±0.5 range.
+  // When a target is set, extend the value range so the dashed reference line
+  // is guaranteed to be visible inside the chart even if the user is far from
+  // their goal.
+  const minW = target !== undefined ? Math.min(...weights, target) : Math.min(...weights);
+  const maxW = target !== undefined ? Math.max(...weights, target) : Math.max(...weights);
   const span = Math.max(0.5, maxW - minW);
   const yMin = minW - span * 0.15;
   const yMax = maxW + span * 0.15;
@@ -109,6 +111,32 @@ export function WeightChart({ entries }: Props) {
 
       {/* Filled area under the line */}
       {areaPath && <path d={areaPath} fill="url(#weight-area)" />}
+
+      {/* Target reference line (dashed) — drawn before the data line so the
+          line/points clearly sit on top. */}
+      {target !== undefined && (
+        <g>
+          <line
+            x1={PAD.left}
+            x2={VIEW_W - PAD.right}
+            y1={yAt(target)}
+            y2={yAt(target)}
+            stroke="rgba(255, 207, 86, 0.85)"
+            strokeWidth="1.4"
+            strokeDasharray="5 4"
+          />
+          <text
+            x={VIEW_W - PAD.right - 4}
+            y={yAt(target) - 4}
+            textAnchor="end"
+            fontSize="9"
+            fill="rgba(255, 207, 86, 0.95)"
+            fontFamily="monospace"
+          >
+            目標 {target.toFixed(1)}
+          </text>
+        </g>
+      )}
 
       {/* Line */}
       <path d={linePath} fill="none" stroke="#5fc9ff" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" />

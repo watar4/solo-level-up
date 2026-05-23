@@ -60,6 +60,8 @@ export interface GameData {
   moveQuest: (quest: Quest, direction: 'up' | 'down') => Promise<void>;
   reorderActive: (from: number, to: number) => Promise<void>;
   renameCharacter: (name: string) => Promise<void>;
+  allocateStatPoint: (stat: StatKey) => Promise<void>;
+  setWeightTarget: (target: number | null) => Promise<void>;
   resetAccount: () => Promise<void>;
 }
 
@@ -536,6 +538,51 @@ export function useGameData(user: User | null): GameData {
     [user, character]
   );
 
+  const allocateStatPoint = useCallback(
+    async (stat: StatKey): Promise<void> => {
+      if (!user || !character || character.statPoints <= 0) return;
+      const newStats: Record<StatKey, number> = {
+        ...character.stats,
+        [stat]: character.stats[stat] + 1,
+      };
+      const newPoints = character.statPoints - 1;
+      // Optimistic update — Firestore write happens in the background. The
+      // worst case (write fails) is one wrongly-displayed stat point until
+      // the snapshot subscription catches up.
+      setCharacter({ ...character, stats: newStats, statPoints: newPoints });
+      try {
+        await updateCharacter(user.uid, {
+          stats: newStats,
+          statPoints: newPoints,
+        });
+      } catch (err) {
+        console.error('[stat:allocate] failed, rolling back', err);
+        setCharacter(character);
+        throw err;
+      }
+    },
+    [user, character]
+  );
+
+  const setWeightTarget = useCallback(
+    async (target: number | null): Promise<void> => {
+      if (!user || !character) return;
+      const value =
+        target === null ? null : Math.round(target * 10) / 10;
+      // Firestore doesn't have a typed "clear field" semantic in our wrapper,
+      // so we store null to mean "no target" and surface it as undefined to
+      // the UI in the local state.
+      await updateCharacter(user.uid, {
+        weightTarget: value as number | undefined,
+      });
+      setCharacter({
+        ...character,
+        weightTarget: value === null ? undefined : value,
+      });
+    },
+    [user, character]
+  );
+
   const popEvent = useCallback(() => {
     setPendingEvents((prev) => prev.slice(1));
   }, []);
@@ -575,6 +622,8 @@ export function useGameData(user: User | null): GameData {
     moveQuest,
     reorderActive,
     renameCharacter,
+    allocateStatPoint,
+    setWeightTarget,
     resetAccount,
   };
 }
