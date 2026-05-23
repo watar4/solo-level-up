@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { initializeFirestore } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -17,5 +17,12 @@ export const firebaseReady = Boolean(firebaseConfig.apiKey && firebaseConfig.pro
 const app = firebaseReady ? initializeApp(firebaseConfig) : null;
 
 export const auth = app ? getAuth(app) : null;
-export const db = app ? getFirestore(app) : null;
+// `ignoreUndefinedProperties: true` — without this, any updateDoc/setDoc call
+// containing `field: undefined` throws and rejects the whole batch. That hits
+// us on quest completion because we always send `unlocked` / `title`, both of
+// which are `undefined` for brand-new characters. Toggling this flag lets the
+// SDK drop those fields silently so the EXP/stat update goes through.
+export const db = app
+  ? initializeFirestore(app, { ignoreUndefinedProperties: true })
+  : null;
 export const googleProvider = new GoogleAuthProvider();
