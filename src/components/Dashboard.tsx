@@ -21,12 +21,14 @@ import { HistoryPanel } from './HistoryPanel';
 import { AchievementsPanel } from './AchievementsPanel';
 import { SkillsPanel } from './SkillsPanel';
 import { ResetAccountModal } from './ResetAccountModal';
+import { StatsDashboard } from './StatsDashboard';
 import { SystemWindow } from './SystemWindow';
 import { isQuestDoneToday, useGameData } from '../hooks/useGameData';
 import { createQuest } from '../lib/firestore';
 import type { Character, Quest } from '../types';
 import {
   Award,
+  BarChart3,
   ChevronDown,
   ChevronUp,
   History,
@@ -62,6 +64,7 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [achOpen, setAchOpen] = useState(false);
   const [skillsOpen, setSkillsOpen] = useState(false);
+  const [statsOpen, setStatsOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [actionSheet, setActionSheet] = useState<ActionSheetState | null>(null);
   // Explicit "what's being dragged" id, set the instant dnd-kit fires
@@ -185,6 +188,10 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
             </h1>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <button type="button" className="sys-button" onClick={() => setStatsOpen(true)}>
+              <BarChart3 className="h-4 w-4" />
+              統計
+            </button>
             <button type="button" className="sys-button" onClick={() => setHistoryOpen(true)}>
               <History className="h-4 w-4" />
               履歴
@@ -429,6 +436,13 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
 
       <SystemToast event={game.pendingEvents[0] ?? null} onDismiss={game.popEvent} />
       <HistoryPanel open={historyOpen} uid={user.uid} quests={game.quests} onClose={() => setHistoryOpen(false)} />
+      <StatsDashboard
+        open={statsOpen}
+        uid={user.uid}
+        character={character}
+        quests={game.quests}
+        onClose={() => setStatsOpen(false)}
+      />
       <AchievementsPanel open={achOpen} character={character} onClose={() => setAchOpen(false)} />
       <SkillsPanel open={skillsOpen} character={character} onClose={() => setSkillsOpen(false)} />
       <ResetAccountModal
