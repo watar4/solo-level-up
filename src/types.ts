@@ -139,7 +139,32 @@ export interface Item {
   createdAt: number;
 }
 
-export type SystemEventKind = 'level-up' | 'achievement' | 'skill' | 'shadow' | 'boss';
+// API keys issued by the player for non-browser clients (iOS Shortcut, etc.)
+// to write to specific inbox collections. Document ID *is* the secret value
+// so Firestore rules can `get(/apiKeys/$(payload.secret))` to look it up.
+export interface ApiKey {
+  id: string;          // = the secret. Treat as sensitive.
+  uid: string;         // owning user
+  label: string;       // human-readable description ("iPhone Shortcut", etc.)
+  scopes: ApiKeyScope[]; // what the key is allowed to do
+  createdAt: number;
+  lastUsedAt?: number; // set by the inbox-drain side as a best-effort hint
+}
+
+export type ApiKeyScope = 'weight';
+
+// Raw entry written by an external client (iOS Shortcut). The web app drains
+// these on the next app-open and converts each one into a `weightEntries` doc.
+export interface WeightInboxEntry {
+  id: string;
+  uid: string;
+  secret: string;       // matches an apiKeys doc id; rules enforce uid match
+  weight: number;       // kg
+  recordedAt?: string;  // ISO 8601 from the Shortcut, optional
+  source?: string;      // free-text, e.g. "ios-shortcut"
+}
+
+export type SystemEventKind = 'level-up' | 'achievement' | 'skill' | 'shadow' | 'boss' | 'inbox';
 
 export interface SystemEvent {
   id: string;

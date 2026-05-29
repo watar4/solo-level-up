@@ -13,6 +13,10 @@ const firebaseConfig = {
 
 export const firebaseReady = Boolean(firebaseConfig.apiKey && firebaseConfig.projectId);
 
+// Exposed for UI surfaces that need to show the Firestore REST URL the user
+// must paste into iOS Shortcut (e.g. the API keys panel).
+export const firebaseProjectId: string = firebaseConfig.projectId ?? '';
+
 // Initialise lazily so the app can still render a configuration warning when env is missing.
 const app = firebaseReady ? initializeApp(firebaseConfig) : null;
 

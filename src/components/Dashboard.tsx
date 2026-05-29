@@ -26,6 +26,7 @@ import { DailyBossPanel } from './DailyBossPanel';
 import { BattleSkillsPanel } from './BattleSkillsPanel';
 import { AppearanceEditor } from './AppearanceEditor';
 import { InventoryPanel } from './InventoryPanel';
+import { ApiKeysPanel } from './ApiKeysPanel';
 import { SystemWindow } from './SystemWindow';
 import { useShadows } from '../hooks/useShadows';
 import { useItems } from '../hooks/useItems';
@@ -43,6 +44,7 @@ import {
   ChevronUp,
   Crown,
   History,
+  KeyRound,
   LogOut,
   Plus,
   RotateCcw,
@@ -82,6 +84,7 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
   const [battleSkillsOpen, setBattleSkillsOpen] = useState(false);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [inventoryOpen, setInventoryOpen] = useState(false);
+  const [apiKeysOpen, setApiKeysOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [actionSheet, setActionSheet] = useState<ActionSheetState | null>(null);
 
@@ -307,6 +310,15 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
                 MASTER
               </button>
             )}
+            <button
+              type="button"
+              className="sys-button"
+              onClick={() => setApiKeysOpen(true)}
+              title="iPhone ヘルスケア連携 (API キー管理)"
+            >
+              <KeyRound className="h-4 w-4" />
+              連携
+            </button>
             <button type="button" className="sys-button sys-button-danger" onClick={() => setResetOpen(true)}>
               <RotateCcw className="h-4 w-4" />
               リセット
@@ -593,6 +605,11 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
         onDiscard={itemsData.discardItem}
       />
       <AchievementsPanel open={achOpen} character={character} onClose={() => setAchOpen(false)} />
+      <ApiKeysPanel
+        open={apiKeysOpen}
+        uid={user.uid}
+        onClose={() => setApiKeysOpen(false)}
+      />
       <ResetAccountModal
         open={resetOpen}
         character={character}

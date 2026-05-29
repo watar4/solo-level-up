@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { User } from 'firebase/auth';
 import {
+  drainWeightInbox,
   loadCharacter,
   subscribeQuests,
   createCharacter,
@@ -254,6 +255,33 @@ export function useGameData(user: User | null): GameData {
     if (!user) return;
     return subscribeQuests(user.uid, setQuests);
   }, [user]);
+
+  // Drain the iOS-Shortcut weight inbox on sign-in. Each row in
+  // `weightInbox` for this uid is converted into a real `weightEntries`
+  // doc and removed. Surfaces a single toast covering the whole batch.
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    drainWeightInbox(user.uid)
+      .then((count) => {
+        if (cancelled || count <= 0) return;
+        enqueue([
+          {
+            id: `inbox:weight:${Date.now()}`,
+            kind: 'inbox',
+            title: 'ヘルスケア同期',
+            primary: `${count} 件の体重を取り込み`,
+            secondary: 'iPhone から自動連携されたデータです',
+            icon: '⚖️',
+            accent: 'cyan',
+          },
+        ]);
+      })
+      .catch((err) => console.error('[inbox:drain] failed', err));
+    return () => {
+      cancelled = true;
+    };
+  }, [user, enqueue]);
 
   // Retroactively check for unlocks whenever character or quests change.
   // Runs after both have loaded; only persists when something actually changes.

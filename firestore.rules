@@ -69,5 +69,35 @@ service cloud.firestore {
                     && request.resource.data.uid == request.auth.uid;
       allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
     }
+
+    // Per-user API keys issued from the app UI for non-browser clients.
+    // Document ID is the secret itself; this is intentional so weightInbox
+    // rules can look up the key in O(1). Only the owner (authenticated) can
+    // read/create/delete their own keys.
+    match /apiKeys/{key} {
+      allow read, delete: if request.auth != null && resource.data.uid == request.auth.uid;
+      allow create:       if request.auth != null && request.resource.data.uid == request.auth.uid;
+      allow update:       if false;
+    }
+
+    // Inbox for body-weight readings posted from iOS Shortcuts / external
+    // automation. Anonymous create is allowed *only* when:
+    //   1. the payload carries a `secret` field
+    //   2. an apiKeys doc with id == that secret exists
+    //   3. that apiKeys doc's uid matches the payload uid
+    //      (so a leaked key cannot write to a different user's inbox)
+    //   4. the weight is a plausible kg value
+    // Owners (authenticated) can read & delete their own inbox rows so the
+    // web app can drain them. Updates are forbidden (no in-place mutation).
+    match /weightInbox/{id} {
+      allow create: if request.resource.data.secret is string
+                    && exists(/databases/$(database)/documents/apiKeys/$(request.resource.data.secret))
+                    && get(/databases/$(database)/documents/apiKeys/$(request.resource.data.secret)).data.uid == request.resource.data.uid
+                    && request.resource.data.weight is number
+                    && request.resource.data.weight > 20
+                    && request.resource.data.weight < 300;
+      allow read, delete: if request.auth != null && resource.data.uid == request.auth.uid;
+      allow update: if false;
+    }
   }
 }

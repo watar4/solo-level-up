@@ -15,6 +15,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import type {
+  ApiKey,
   BossAttempt,
   Character,
   HunterAppearance,
@@ -23,6 +24,7 @@ import type {
   Shadow,
   StatKey,
   WeightEntry,
+  WeightInboxEntry,
 } from '../types';
 import { ALL_STATS } from '../types';
 
@@ -329,4 +331,91 @@ export async function updateItem(id: string, patch: Partial<Item>): Promise<void
 
 export async function deleteItem(id: string): Promise<void> {
   await deleteDoc(doc(requireDb(), 'items', id));
+}
+
+// --- API keys + weight inbox -------------------------------------------
+
+export function subscribeApiKeys(
+  uid: string,
+  onChange: (keys: ApiKey[]) => void,
+  onError?: (err: Error) => void
+): () => void {
+  const q = query(collection(requireDb(), 'apiKeys'), where('uid', '==', uid));
+  return onSnapshot(
+    q,
+    (snap) => {
+      const keys: ApiKey[] = [];
+      snap.forEach((s) => {
+        const data = s.data() as Omit<ApiKey, 'id'>;
+        keys.push({ ...data, id: s.id });
+      });
+      keys.sort((a, b) => b.createdAt - a.createdAt);
+      onChange(keys);
+    },
+    (err) => {
+      console.error('[apiKeys:subscribe] failed', err);
+      onError?.(err);
+    }
+  );
+}
+
+// Document ID *is* the secret so Firestore rules can look it up in O(1)
+// via `get(/apiKeys/$(payload.secret))`. The caller MUST surface the secret
+// to the user ONCE on creation — it cannot be recovered from a later read
+// alone in practice (the id is the secret, so reading the apiKeys doc with
+// auth already gives it back, but the UI design treats it as write-once).
+export async function createApiKey(
+  uid: string,
+  secret: string,
+  label: string,
+  scopes: ApiKey['scopes']
+): Promise<void> {
+  const data: Omit<ApiKey, 'id'> = {
+    uid,
+    label,
+    scopes,
+    createdAt: Date.now(),
+  };
+  await setDoc(doc(requireDb(), 'apiKeys', secret), data);
+}
+
+export async function deleteApiKey(secret: string): Promise<void> {
+  await deleteDoc(doc(requireDb(), 'apiKeys', secret));
+}
+
+// Drains the weightInbox: every entry belonging to this uid is converted
+// into a proper weightEntries doc and the inbox row is removed. Returns the
+// number of entries imported so callers can surface a toast.
+export async function drainWeightInbox(uid: string): Promise<number> {
+  const q = query(collection(requireDb(), 'weightInbox'), where('uid', '==', uid));
+  const snap = await getDocs(q);
+  if (snap.empty) return 0;
+
+  // We also de-dupe within the batch on (date, weight) so a Shortcut that
+  // accidentally fires twice doesn't double-write.
+  const seen = new Set<string>();
+  let imported = 0;
+  await Promise.all(
+    snap.docs.map(async (d) => {
+      const data = d.data() as Omit<WeightInboxEntry, 'id'>;
+      const date = (data.recordedAt
+        ? new Date(data.recordedAt)
+        : new Date()
+      ).toISOString().slice(0, 10);
+      const key = `${date}:${data.weight.toFixed(1)}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        await addWeightEntry({
+          uid,
+          date,
+          weight: Math.round(data.weight * 10) / 10,
+          createdAt: Date.now(),
+        });
+        imported++;
+      }
+      // Always remove the inbox row — including duplicates we just skipped.
+      await deleteDoc(d.ref);
+    })
+  );
+  return imported;
 }
