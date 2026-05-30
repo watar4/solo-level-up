@@ -383,6 +383,24 @@ export async function deleteApiKey(secret: string): Promise<void> {
   await deleteDoc(doc(requireDb(), 'apiKeys', secret));
 }
 
+// A Shortcut may send recordedAt as a Firestore `timestampValue` (read back as
+// a Timestamp), an ISO `stringValue`, or epoch millis. Normalise all of them to
+// a YYYY-MM-DD key; fall back to today on anything unparseable so one bad row
+// can never throw and poison the whole drain batch.
+function inboxDateKey(recordedAt: unknown): string {
+  let ms: number | null = null;
+  if (recordedAt instanceof Timestamp) {
+    ms = recordedAt.toMillis();
+  } else if (typeof recordedAt === 'string') {
+    const parsed = Date.parse(recordedAt);
+    if (!Number.isNaN(parsed)) ms = parsed;
+  } else if (typeof recordedAt === 'number') {
+    ms = recordedAt;
+  }
+  const d = ms !== null ? new Date(ms) : new Date();
+  return d.toISOString().slice(0, 10);
+}
+
 // Drains the weightInbox: every entry belonging to this uid is converted
 // into a proper weightEntries doc and the inbox row is removed. Returns the
 // number of entries imported so callers can surface a toast.
@@ -398,10 +416,7 @@ export async function drainWeightInbox(uid: string): Promise<number> {
   await Promise.all(
     snap.docs.map(async (d) => {
       const data = d.data() as Omit<WeightInboxEntry, 'id'>;
-      const date = (data.recordedAt
-        ? new Date(data.recordedAt)
-        : new Date()
-      ).toISOString().slice(0, 10);
+      const date = inboxDateKey(data.recordedAt);
       const key = `${date}:${data.weight.toFixed(1)}`;
       if (!seen.has(key)) {
         seen.add(key);
