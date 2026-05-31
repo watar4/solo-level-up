@@ -145,7 +145,7 @@ export function MealAiPanel({ uid, meals, today, target }: Props) {
         )}
         {target && !hasKey && (
           <p className="text-[11px] text-sys-muted">
-            ※ 下の「API 設定」で Anthropic の API キーを登録すると評価できます。
+            ※ 下の「API 設定」で Gemini の API キーを登録すると評価できます。
           </p>
         )}
         {target && hasKey && !hasDataForRange && (
@@ -167,11 +167,9 @@ export function MealAiPanel({ uid, meals, today, target }: Props) {
               <span className="text-sys-accent">{RANGE_LABEL[result.range]}の評価</span>
               <span className="font-mono">{fmtTime(result.at)}</span>
             </div>
-            <div className="max-h-[60vh] overflow-y-auto pr-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-sys-border/40">
-              <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-sys-text/90">
-                {result.text}
-              </p>
-            </div>
+            <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-sys-text/90">
+              {result.text}
+            </p>
           </div>
         )}
 
