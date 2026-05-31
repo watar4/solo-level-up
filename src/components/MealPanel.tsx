@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { SystemWindow } from './SystemWindow';
+import { MealAiPanel } from './MealAiPanel';
 import { useMeals } from '../hooks/useMeals';
 import { useWeights } from '../hooks/useWeights';
 import { todayKey } from '../lib/leveling';
@@ -451,6 +452,9 @@ export function MealPanel({
           </div>
         )}
       </SystemWindow>
+
+      {/* ----- AI coach (BYO Anthropic key) ----- */}
+      <MealAiPanel uid={uid} meals={meals} today={today} target={effectiveTarget} />
 
       {/* ----- Record / edit a meal ----- */}
       <div ref={formRef}>
