@@ -1,0 +1,26 @@
+{
+  "name": "Solo Level Up — 習慣トラッカー",
+  "short_name": "Solo Level Up",
+  "description": "俺だけレベルアップ習慣トラッカー — クエスト・ステータス・食事管理",
+  "lang": "ja",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#04070f",
+  "theme_color": "#04070f",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any"
+    },
+    {
+      "src": "icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "maskable"
+    }
+  ]
+}
