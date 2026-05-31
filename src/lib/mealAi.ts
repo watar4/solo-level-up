@@ -3,14 +3,14 @@ import { MEAL_SLOT_LABELS } from '../types';
 import { evaluateDay, sumMeals } from './nutrition';
 
 // "Bring your own key" meal review — builds a compact prompt from the logged
-// meals + the daily nutrition target and calls the Anthropic Messages API
-// directly from the browser. The key is supplied by the caller (see
-// useAiSettings) and never leaves the browser except in this request.
+// meals + the daily nutrition target and calls the Google Gemini API directly
+// from the browser. The key is supplied by the caller (see useAiSettings) and
+// never leaves the browser except in this request. Gemini has a free API tier
+// (Google AI Studio), so no extra billing is required for light usage.
 
 export type AiRange = 'day' | 'week';
 
-const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
-const ANTHROPIC_VERSION = '2023-06-01';
+const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
 const SYSTEM_PROMPT = `あなたは育成アプリ「ソロ・レベルアップ」に組み込まれた管理栄養士兼パーソナルコーチです。
 ユーザーの食事記録と1日の栄養目標を比較し、日本語で評価とアドバイスを返してください。
@@ -55,7 +55,7 @@ function lastNDates(today: string, n: number): string[] {
   return out;
 }
 
-// Assemble the user-message text fed to Claude for a daily or weekly review.
+// Assemble the user-message text fed to Gemini for a daily or weekly review.
 export function buildMealReviewMessage(
   meals: MealEntry[],
   target: NutritionTarget,
@@ -87,13 +87,17 @@ export function buildMealReviewMessage(
 ${blocks.join('\n\n') || '(この期間の食事記録はありません)'}`;
 }
 
-interface AnthropicTextBlock {
-  type: string;
+interface GeminiPart {
   text?: string;
 }
-interface AnthropicResponse {
-  content?: AnthropicTextBlock[];
-  error?: { message?: string; type?: string };
+interface GeminiCandidate {
+  content?: { parts?: GeminiPart[] };
+  finishReason?: string;
+}
+interface GeminiResponse {
+  candidates?: GeminiCandidate[];
+  promptFeedback?: { blockReason?: string };
+  error?: { message?: string; status?: string };
 }
 
 export interface MealReviewParams {
@@ -102,29 +106,26 @@ export interface MealReviewParams {
   message: string;
 }
 
-// Direct browser → Claude call. Requires the dangerous-direct-browser-access
-// header; Anthropic returns the matching CORS headers so this works without a
-// backend proxy. Throws an Error with a human-readable message on failure.
+// Direct browser → Gemini call. The Generative Language API allows
+// cross-origin requests, so this works without a backend proxy. The key rides
+// in the query string (the Option-B model already accepts the key being
+// visible in this browser). Throws an Error with a human-readable message.
 export async function requestMealReview({
   apiKey,
   model,
   message,
 }: MealReviewParams): Promise<string> {
+  const url = `${GEMINI_BASE}/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+
   let res: Response;
   try {
-    res = await fetch(ANTHROPIC_URL, {
+    res = await fetch(url, {
       method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': ANTHROPIC_VERSION,
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
+      headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        model,
-        max_tokens: 1024,
-        system: SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: message }],
+        system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+        contents: [{ role: 'user', parts: [{ text: message }] }],
+        generationConfig: { maxOutputTokens: 1024, temperature: 1 },
       }),
     });
   } catch (err) {
@@ -134,19 +135,27 @@ export async function requestMealReview({
     );
   }
 
-  const data = (await res.json().catch(() => null)) as AnthropicResponse | null;
+  const data = (await res.json().catch(() => null)) as GeminiResponse | null;
 
   if (!res.ok) {
     const msg = data?.error?.message ?? `APIエラー (HTTP ${res.status})`;
     throw new Error(msg);
   }
 
-  const text = (data?.content ?? [])
-    .filter((b) => b.type === 'text' && b.text)
-    .map((b) => b.text as string)
+  const text = (data?.candidates ?? [])
+    .flatMap((c) => c.content?.parts ?? [])
+    .map((p) => p.text)
+    .filter((t): t is string => !!t)
     .join('\n')
     .trim();
 
-  if (!text) throw new Error('AIから空の応答が返りました。');
+  if (!text) {
+    const blocked = data?.promptFeedback?.blockReason;
+    throw new Error(
+      blocked
+        ? `安全フィルタでブロックされました (${blocked})。`
+        : 'AIから空の応答が返りました。'
+    );
+  }
   return text;
 }

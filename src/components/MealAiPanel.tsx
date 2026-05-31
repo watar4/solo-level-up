@@ -187,7 +187,7 @@ export function MealAiPanel({ uid, meals, today, target }: Props) {
           <div className="mt-3 space-y-3">
             <label className="block">
               <span className="mb-1 block text-[10px] uppercase tracking-widest text-sys-muted">
-                Anthropic API キー
+                Gemini API キー
               </span>
               <div className="flex gap-2">
                 <input
@@ -195,7 +195,7 @@ export function MealAiPanel({ uid, meals, today, target }: Props) {
                   className="sys-input flex-1 font-mono text-xs"
                   value={keyDraft}
                   onChange={(e) => setKeyDraft(e.target.value)}
-                  placeholder="sk-ant-..."
+                  placeholder="AIza..."
                   autoComplete="off"
                   spellCheck={false}
                 />
@@ -220,7 +220,7 @@ export function MealAiPanel({ uid, meals, today, target }: Props) {
                 className="sys-input font-mono text-xs"
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
-                placeholder="claude-3-5-sonnet-latest"
+                placeholder="gemini-2.5-flash"
                 autoComplete="off"
                 spellCheck={false}
               />
@@ -247,15 +247,15 @@ export function MealAiPanel({ uid, meals, today, target }: Props) {
             </div>
 
             <p className="text-[10px] leading-relaxed text-sys-muted/80">
-              キーはこの端末のブラウザ内にのみ保存され、サーバーには送信されません
-              (Anthropic への評価リクエスト時のみ使用)。
+              キーはこの端末のブラウザ内にのみ保存され、評価リクエスト時に Gemini API
+              へ送信される以外に外部送信はされません。無料枠で利用できます。
               <a
-                href="https://console.anthropic.com/settings/keys"
+                href="https://aistudio.google.com/app/apikey"
                 target="_blank"
                 rel="noreferrer"
                 className="ml-1 underline hover:text-sys-accent"
               >
-                キーの取得
+                キーの取得 (Google AI Studio)
               </a>
             </p>
           </div>

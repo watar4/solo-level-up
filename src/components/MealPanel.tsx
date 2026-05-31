@@ -453,7 +453,7 @@ export function MealPanel({
         )}
       </SystemWindow>
 
-      {/* ----- AI coach (BYO Anthropic key) ----- */}
+      {/* ----- AI coach (BYO Gemini key) ----- */}
       <MealAiPanel uid={uid} meals={meals} today={today} target={effectiveTarget} />
 
       {/* ----- Record / edit a meal ----- */}

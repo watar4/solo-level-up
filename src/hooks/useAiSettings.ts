@@ -1,19 +1,20 @@
 import { useCallback, useEffect, useState } from 'react';
 
-// Per-user AI (Anthropic) settings stored in localStorage, keyed by uid.
+// Per-user AI (Gemini) settings stored in localStorage, keyed by uid.
 //
-// The Anthropic API key is a *billing* secret, so unlike the rest of the app's
-// state we deliberately keep it ONLY in the browser — it is never uploaded to
-// Firestore/Google. This is the "bring your own key" (Option B) model: the key
-// travels straight from this browser to api.anthropic.com and nowhere else.
+// The Gemini API key is a credential tied to the user's Google AI Studio
+// project, so unlike the rest of the app's state we deliberately keep it ONLY
+// in the browser — it is never uploaded to Firestore/Google's other services.
+// This is the "bring your own key" (Option B) model: the key travels straight
+// from this browser to generativelanguage.googleapis.com and nowhere else.
 // Scoping the storage key by uid means each signed-in user manages their own
 // key on this device. Tradeoff: it does not sync across devices (re-enter per
-// device), which is an acceptable posture for a secret that bills the user.
+// device), which is an acceptable posture for a personal API credential.
 
-const DEFAULT_MODEL = 'claude-3-5-sonnet-latest';
+const DEFAULT_MODEL = 'gemini-2.5-flash';
 
-const keyOf = (uid: string) => `slu:anthropicKey:${uid}`;
-const modelOf = (uid: string) => `slu:anthropicModel:${uid}`;
+const keyOf = (uid: string) => `slu:geminiKey:${uid}`;
+const modelOf = (uid: string) => `slu:geminiModel:${uid}`;
 
 export interface AiSettings {
   apiKey: string;
