@@ -117,6 +117,19 @@ export async function requestMealReview({
 }: MealReviewParams): Promise<string> {
   const url = `${GEMINI_BASE}/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
+  // Gemini 2.5 Flash defaults to "thinking", which spends the output-token
+  // budget on hidden reasoning and can leave the visible answer truncated
+  // mid-sentence. Disable it for the flash family so the full coaching reply
+  // fits within the budget. (Pro models require a non-zero thinking budget, so
+  // we only touch flash / flash-lite, where a 0 budget is allowed.)
+  const generationConfig: Record<string, unknown> = {
+    maxOutputTokens: 2048,
+    temperature: 1,
+  };
+  if (/2\.5-flash/.test(model)) {
+    generationConfig.thinkingConfig = { thinkingBudget: 0 };
+  }
+
   let res: Response;
   try {
     res = await fetch(url, {
@@ -125,7 +138,7 @@ export async function requestMealReview({
       body: JSON.stringify({
         system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
         contents: [{ role: 'user', parts: [{ text: message }] }],
-        generationConfig: { maxOutputTokens: 1024, temperature: 1 },
+        generationConfig,
       }),
     });
   } catch (err) {
@@ -151,6 +164,10 @@ export async function requestMealReview({
 
   if (!text) {
     const blocked = data?.promptFeedback?.blockReason;
+    const finish = data?.candidates?.[0]?.finishReason;
+    if (finish === 'MAX_TOKENS') {
+      throw new Error('応答がトークン上限に達して途中で停止しました。もう一度お試しください。');
+    }
     throw new Error(
       blocked
         ? `安全フィルタでブロックされました (${blocked})。`
