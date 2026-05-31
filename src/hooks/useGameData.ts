@@ -13,6 +13,7 @@ import {
   getCompletionsForQuest,
   getAllCompletions,
   deleteCompletions,
+  deleteAllByUid,
   addShadow,
 } from '../lib/firestore';
 import {
@@ -902,15 +903,28 @@ export function useGameData(user: User | null): GameData {
   // lands back on the character-creation screen without re-login.
   const resetAccount = useCallback(async (): Promise<void> => {
     if (!user) return;
+    const { uid } = user;
     // Delete completion log entries in chunks-of-Promise.all
-    const completions = await getAllCompletions(user.uid);
+    const completions = await getAllCompletions(uid);
     if (completions.length) {
       await deleteCompletions(completions.map((c) => c.id));
     }
     // Delete every quest doc
     await Promise.all(quests.map((q) => deleteQuest(q.id)));
+    // Wipe the remaining per-user collections. The auth uid survives a reset,
+    // so anything left here would resurrect under the next character. API keys
+    // are intentionally left intact so existing external integrations (iOS
+    // Shortcuts, etc.) keep working after a reset.
+    await Promise.all([
+      deleteAllByUid('meals', uid),
+      deleteAllByUid('weightEntries', uid),
+      deleteAllByUid('shadows', uid),
+      deleteAllByUid('items', uid),
+      deleteAllByUid('bossAttempts', uid),
+      deleteAllByUid('weightInbox', uid),
+    ]);
     // Delete the character doc itself
-    await deleteCharacter(user.uid);
+    await deleteCharacter(uid);
 
     setCharacter(null);
     setQuests([]);

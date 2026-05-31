@@ -188,6 +188,18 @@ export async function deleteCompletions(ids: string[]): Promise<void> {
   await Promise.all(ids.map((id) => deleteDoc(doc(requireDb(), 'completions', id))));
 }
 
+/**
+ * Delete every document in `collectionName` whose `uid` field matches. Used by
+ * the account-reset flow: the Firebase auth uid survives a reset, so any
+ * uid-scoped collection left behind would resurrect its data under the next
+ * character. This wipes one such collection clean.
+ */
+export async function deleteAllByUid(collectionName: string, uid: string): Promise<void> {
+  const q = query(collection(requireDb(), collectionName), where('uid', '==', uid));
+  const snap = await getDocs(q);
+  await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)));
+}
+
 // --- Weight tracking ----------------------------------------------------
 
 export function subscribeWeights(
