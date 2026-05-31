@@ -131,7 +131,7 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
   const [actionSheet, setActionSheet] = useState<ActionSheetState | null>(null);
   // Active bottom-nav tab. Most feature panels stay as modals; the tab screens
   // just re-home their trigger buttons out of the old cramped header row.
-  const [tab, setTab] = useState<DashboardTab>('home');
+  const [tab, setTab] = useState<DashboardTab>('quest');
 
   // Shadow army subscription. Shadows now fight independently as boss
   // companions instead of granting passive stat bonuses.
@@ -306,8 +306,8 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
           </div>
         </header>
 
-        {tab === 'home' && (
-        <div className="grid gap-6 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+        {tab === 'quest' && (
+        <div className="mx-auto max-w-xl space-y-6">
           <SystemWindow title="Quest Log" subtitle="daily missions">
             <div className="mb-3 flex items-center justify-between">
               <p className="text-xs uppercase tracking-widest text-sys-muted flex items-center gap-1.5">
@@ -421,40 +421,65 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
             )}
           </SystemWindow>
 
-          <div className="space-y-6">
-            <StatusPanel
-              character={character}
-              email={user.email}
-              uid={user.uid}
-              onRename={game.renameCharacter}
-              onAllocateStat={game.allocateStatPoint}
-              onSetWeightTarget={game.setWeightTarget}
-              onEditAppearance={() => setAppearanceOpen(true)}
-            />
-
-            <SystemWindow title="Today" subtitle="progress">
-              <div className="space-y-2">
-                <p className="text-sm text-sys-text/80">
-                  本日のクエスト達成:{' '}
-                  <span className="font-mono text-lg text-sys-accent">
-                    {todayDoneCount}
-                  </span>{' '}
-                  <span className="text-sys-muted">/ {active.length}</span>
-                </p>
-                <div className="h-2 w-full overflow-hidden border border-sys-border/30 bg-black/40">
-                  <div
-                    className="h-full bg-gradient-to-r from-sys-ok to-sys-accent transition-all duration-500"
-                    style={{
-                      width:
-                        active.length > 0
-                          ? `${(todayDoneCount / active.length) * 100}%`
-                          : '0%',
-                    }}
-                  />
-                </div>
+          <SystemWindow title="Today" subtitle="progress">
+            <div className="space-y-2">
+              <p className="text-sm text-sys-text/80">
+                本日のクエスト達成:{' '}
+                <span className="font-mono text-lg text-sys-accent">
+                  {todayDoneCount}
+                </span>{' '}
+                <span className="text-sys-muted">/ {active.length}</span>
+              </p>
+              <div className="h-2 w-full overflow-hidden border border-sys-border/30 bg-black/40">
+                <div
+                  className="h-full bg-gradient-to-r from-sys-ok to-sys-accent transition-all duration-500"
+                  style={{
+                    width:
+                      active.length > 0
+                        ? `${(todayDoneCount / active.length) * 100}%`
+                        : '0%',
+                  }}
+                />
               </div>
-            </SystemWindow>
-          </div>
+            </div>
+          </SystemWindow>
+        </div>
+        )}
+
+        {tab === 'status' && (
+        <div className="mx-auto max-w-xl space-y-6">
+          <StatusPanel
+            character={character}
+            email={user.email}
+            uid={user.uid}
+            onRename={game.renameCharacter}
+            onAllocateStat={game.allocateStatPoint}
+            onSetWeightTarget={game.setWeightTarget}
+            onEditAppearance={() => setAppearanceOpen(true)}
+          />
+
+          <SystemWindow title="Records" subtitle="stats & history">
+            <div className="grid grid-cols-2 gap-3">
+              <NavTile
+                Icon={BarChart3}
+                label="統計"
+                sublabel="statistics"
+                onClick={() => setStatsOpen(true)}
+              />
+              <NavTile
+                Icon={History}
+                label="履歴"
+                sublabel="quest log"
+                onClick={() => setHistoryOpen(true)}
+              />
+              <NavTile
+                Icon={Award}
+                label="実績"
+                sublabel="achievements"
+                onClick={() => setAchOpen(true)}
+              />
+            </div>
+          </SystemWindow>
         </div>
         )}
 
@@ -497,33 +522,6 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
                   label="装備"
                   sublabel={itemsData.equippedWeapon ? itemsData.equippedWeapon.name : '未装備'}
                   onClick={() => setInventoryOpen(true)}
-                />
-              </div>
-            </SystemWindow>
-          </div>
-        )}
-
-        {tab === 'records' && (
-          <div className="mx-auto max-w-xl">
-            <SystemWindow title="Records" subtitle="stats & history">
-              <div className="grid grid-cols-2 gap-3">
-                <NavTile
-                  Icon={BarChart3}
-                  label="統計"
-                  sublabel="statistics"
-                  onClick={() => setStatsOpen(true)}
-                />
-                <NavTile
-                  Icon={History}
-                  label="履歴"
-                  sublabel="quest log"
-                  onClick={() => setHistoryOpen(true)}
-                />
-                <NavTile
-                  Icon={Award}
-                  label="実績"
-                  sublabel="achievements"
-                  onClick={() => setAchOpen(true)}
                 />
               </div>
             </SystemWindow>

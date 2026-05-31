@@ -1,13 +1,13 @@
 import type { LucideIcon } from 'lucide-react';
-import { Home, UtensilsCrossed, Swords, BarChart3, Menu } from 'lucide-react';
+import { ScrollText, UserRound, UtensilsCrossed, Swords, Menu } from 'lucide-react';
 
-export type DashboardTab = 'home' | 'meal' | 'combat' | 'records' | 'menu';
+export type DashboardTab = 'quest' | 'status' | 'meal' | 'combat' | 'menu';
 
 const TABS: { id: DashboardTab; label: string; Icon: LucideIcon }[] = [
-  { id: 'home', label: 'ホーム', Icon: Home },
+  { id: 'quest', label: 'クエスト', Icon: ScrollText },
+  { id: 'status', label: 'ステータス', Icon: UserRound },
   { id: 'meal', label: '食事', Icon: UtensilsCrossed },
   { id: 'combat', label: '戦闘', Icon: Swords },
-  { id: 'records', label: '記録', Icon: BarChart3 },
   { id: 'menu', label: 'メニュー', Icon: Menu },
 ];
 
