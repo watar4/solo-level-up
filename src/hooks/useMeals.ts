@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   addMeal as addMealDoc,
   deleteMeal,
+  updateMeal,
   subscribeMeals,
 } from '../lib/firestore';
 import type { MealEntry } from '../types';
@@ -13,7 +14,26 @@ export type MealInput = Omit<MealEntry, 'id' | 'uid' | 'createdAt'>;
 export interface MealsData {
   meals: MealEntry[];
   addMeal: (input: MealInput) => Promise<void>;
+  editMeal: (id: string, input: MealInput) => Promise<void>;
   removeMeal: (id: string) => Promise<void>;
+}
+
+// Normalise a raw form payload before it hits Firestore. Guards against
+// negative/NaN values; calories stay whole numbers while PFC keep one decimal
+// place (the form accepts decimals).
+function cleanMeal(input: MealInput): MealInput {
+  const intClamp = (n: number) => (Number.isFinite(n) && n > 0 ? Math.round(n) : 0);
+  const round1 = (n: number) =>
+    Number.isFinite(n) && n > 0 ? Math.round(n * 10) / 10 : 0;
+  return {
+    date: input.date,
+    slot: input.slot,
+    name: input.name.trim() || '無名の食事',
+    kcal: intClamp(input.kcal),
+    protein: round1(input.protein),
+    fat: round1(input.fat),
+    carbs: round1(input.carbs),
+  };
 }
 
 export function useMeals(uid: string | null): MealsData {
@@ -30,23 +50,15 @@ export function useMeals(uid: string | null): MealsData {
   const addMeal = useCallback(
     async (input: MealInput): Promise<void> => {
       if (!uid) return;
-      // Guard against stray negative/NaN values. Calories stay whole numbers;
-      // PFC keep one decimal place so entries like "12.5 g" survive (the form
-      // accepts decimals).
-      const intClamp = (n: number) => (Number.isFinite(n) && n > 0 ? Math.round(n) : 0);
-      const round1 = (n: number) =>
-        Number.isFinite(n) && n > 0 ? Math.round(n * 10) / 10 : 0;
-      await addMealDoc({
-        uid,
-        date: input.date,
-        slot: input.slot,
-        name: input.name.trim() || '無名の食事',
-        kcal: intClamp(input.kcal),
-        protein: round1(input.protein),
-        fat: round1(input.fat),
-        carbs: round1(input.carbs),
-        createdAt: Date.now(),
-      });
+      await addMealDoc({ uid, ...cleanMeal(input), createdAt: Date.now() });
+    },
+    [uid]
+  );
+
+  const editMeal = useCallback(
+    async (id: string, input: MealInput): Promise<void> => {
+      if (!uid) return;
+      await updateMeal(id, cleanMeal(input));
     },
     [uid]
   );
@@ -55,5 +67,5 @@ export function useMeals(uid: string | null): MealsData {
     await deleteMeal(id);
   }, []);
 
-  return { meals, addMeal, removeMeal };
+  return { meals, addMeal, editMeal, removeMeal };
 }

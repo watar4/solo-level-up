@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { SystemWindow } from './SystemWindow';
 import { useMeals } from '../hooks/useMeals';
 import { useWeights } from '../hooks/useWeights';
@@ -24,11 +24,14 @@ import type {
   ActivityLevel,
   Character,
   DietType,
+  MealEntry,
   MealSlot,
   NutritionTarget,
 } from '../types';
 import {
+  Check,
   Flame,
+  Pencil,
   Plus,
   SlidersHorizontal,
   Target,
@@ -181,7 +184,7 @@ export function MealPanel({
   onAwardNutritionExp,
 }: Props) {
   const today = todayKey();
-  const { meals, addMeal, removeMeal } = useMeals(uid);
+  const { meals, addMeal, editMeal, removeMeal } = useMeals(uid);
   const { entries } = useWeights(uid);
 
   // ----- input form state -----
@@ -193,6 +196,12 @@ export function MealPanel({
   const [carbs, setCarbs] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // When set, the form edits an existing entry instead of logging a new one.
+  // editingDate preserves the original day (the form has no date picker).
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingDate, setEditingDate] = useState(today);
+  const formRef = useRef<HTMLDivElement>(null);
 
   // ----- goal-setting state -----
   const [twDraft, setTwDraft] = useState(
@@ -288,6 +297,14 @@ export function MealPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [todayEval?.grade, todayEval?.score, rewardedToday, today]);
 
+  const resetForm = () => {
+    setName('');
+    setKcal('');
+    setProtein('');
+    setFat('');
+    setCarbs('');
+  };
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (busy) return;
@@ -306,27 +323,52 @@ export function MealPanel({
     setBusy(true);
     setError(null);
     try {
-      await addMeal({
-        date: today,
+      const payload = {
+        // Editing keeps the entry on its original day; new logs go to today.
+        date: editingId ? editingDate : today,
         slot,
         name: name.trim(),
         kcal: kcalV,
         protein: pV,
         fat: fV,
         carbs: cV,
-      });
-      setName('');
-      setKcal('');
-      setProtein('');
-      setFat('');
-      setCarbs('');
+      };
+      if (editingId) {
+        await editMeal(editingId, payload);
+        setEditingId(null);
+      } else {
+        await addMeal(payload);
+      }
+      resetForm();
     } catch (err) {
-      console.error('[meal:add] failed', err);
+      console.error('[meal:save] failed', err);
       const msg = err instanceof Error ? err.message : String(err);
       setError(`保存に失敗しました: ${msg}`);
     } finally {
       setBusy(false);
     }
+  };
+
+  // Load an existing entry into the form for editing and scroll it into view.
+  const startEdit = (m: MealEntry) => {
+    setEditingId(m.id);
+    setEditingDate(m.date);
+    setSlot(m.slot);
+    setName(m.name);
+    setKcal(String(m.kcal));
+    setProtein(String(m.protein));
+    setFat(String(m.fat));
+    setCarbs(String(m.carbs));
+    setError(null);
+    requestAnimationFrame(() =>
+      formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    );
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setError(null);
+    resetForm();
   };
 
   const commitTargetWeight = async () => {
@@ -410,9 +452,25 @@ export function MealPanel({
         )}
       </SystemWindow>
 
-      {/* ----- Record a meal ----- */}
-      <SystemWindow title="Record" subtitle="log a meal">
+      {/* ----- Record / edit a meal ----- */}
+      <div ref={formRef}>
+      <SystemWindow title="Record" subtitle={editingId ? 'edit entry' : 'log a meal'}>
         <form onSubmit={submit} className="space-y-3">
+          {editingId && (
+            <div className="flex items-center justify-between border border-sys-gold/40 bg-sys-gold/5 px-2.5 py-1.5 text-[11px]">
+              <span className="text-sys-gold">
+                {dayLabel(editingDate, today)} の記録を編集中
+              </span>
+              <button
+                type="button"
+                onClick={cancelEdit}
+                className="text-sys-muted hover:text-sys-text"
+              >
+                取消
+              </button>
+            </div>
+          )}
+
           <ChipGroup
             value={slot}
             onChange={setSlot}
@@ -493,11 +551,12 @@ export function MealPanel({
           {error && <p className="text-[11px] text-sys-danger">{error}</p>}
 
           <button type="submit" className="sys-button w-full justify-center" disabled={busy}>
-            <Plus className="h-4 w-4" />
-            {busy ? '保存中…' : '記録する'}
+            {editingId ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+            {busy ? '保存中…' : editingId ? '更新する' : '記録する'}
           </button>
         </form>
       </SystemWindow>
+      </div>
 
       {/* ----- Goal settings ----- */}
       <SystemWindow title="Goal" subtitle="nutrition target">
@@ -720,7 +779,12 @@ export function MealPanel({
                   </summary>
                   <div className="space-y-1.5 border-t border-sys-border/20 px-3 py-2">
                     {day.items.map((m) => (
-                      <div key={m.id} className="flex items-center gap-2 text-xs">
+                      <div
+                        key={m.id}
+                        className={`flex items-center gap-2 text-xs ${
+                          m.id === editingId ? 'bg-sys-gold/5' : ''
+                        }`}
+                      >
                         <div className="min-w-0 flex-1">
                           <span className="text-[10px] text-sys-muted">
                             {MEAL_SLOT_LABELS[m.slot]}
@@ -730,6 +794,14 @@ export function MealPanel({
                         <span className="shrink-0 font-mono text-[10px] text-sys-muted">
                           {m.kcal}k · P{m.protein} F{m.fat} C{m.carbs}
                         </span>
+                        <button
+                          type="button"
+                          onClick={() => startEdit(m)}
+                          className="shrink-0 text-sys-muted/60 hover:text-sys-accent"
+                          aria-label="編集"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
                         <button
                           type="button"
                           onClick={() => void removeMeal(m.id)}

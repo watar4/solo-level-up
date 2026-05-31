@@ -274,6 +274,13 @@ export async function addMeal(entry: Omit<MealEntry, 'id'>): Promise<string> {
   return ref.id;
 }
 
+export async function updateMeal(
+  id: string,
+  patch: Partial<Omit<MealEntry, 'id' | 'uid' | 'createdAt'>>
+): Promise<void> {
+  await updateDoc(doc(requireDb(), 'meals', id), patch as Record<string, unknown>);
+}
+
 export async function deleteMeal(id: string): Promise<void> {
   await deleteDoc(doc(requireDb(), 'meals', id));
 }
