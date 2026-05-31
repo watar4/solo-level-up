@@ -917,6 +917,7 @@ export function useGameData(user: User | null): GameData {
     // Shortcuts, etc.) keep working after a reset.
     await Promise.all([
       deleteAllByUid('meals', uid),
+      deleteAllByUid('mealPresets', uid),
       deleteAllByUid('weightEntries', uid),
       deleteAllByUid('shadows', uid),
       deleteAllByUid('items', uid),

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { SystemWindow } from './SystemWindow';
 import { MealAiPanel } from './MealAiPanel';
 import { useMeals } from '../hooks/useMeals';
+import { useMealPresets } from '../hooks/useMealPresets';
 import { useWeights } from '../hooks/useWeights';
 import { todayKey } from '../lib/leveling';
 import {
@@ -26,10 +27,13 @@ import type {
   Character,
   DietType,
   MealEntry,
+  MealPreset,
   MealSlot,
   NutritionTarget,
 } from '../types';
 import {
+  Bookmark,
+  BookmarkPlus,
   Check,
   Flame,
   Pencil,
@@ -38,6 +42,7 @@ import {
   Target,
   Trash2,
   UtensilsCrossed,
+  X,
 } from 'lucide-react';
 
 interface Props {
@@ -186,6 +191,7 @@ export function MealPanel({
 }: Props) {
   const today = todayKey();
   const { meals, addMeal, editMeal, removeMeal } = useMeals(uid);
+  const { presets, savePreset, removePreset } = useMealPresets(uid);
   const { entries } = useWeights(uid);
 
   // ----- input form state -----
@@ -203,6 +209,11 @@ export function MealPanel({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingDate, setEditingDate] = useState(today);
   const formRef = useRef<HTMLDivElement>(null);
+
+  // Preset management UI state. `managePresets` flips chips into delete mode;
+  // `presetMsg` is a short confirmation shown after saving.
+  const [managePresets, setManagePresets] = useState(false);
+  const [presetMsg, setPresetMsg] = useState<string | null>(null);
 
   // ----- goal-setting state -----
   const [twDraft, setTwDraft] = useState(
@@ -372,6 +383,45 @@ export function MealPanel({
     resetForm();
   };
 
+  // Fill the form from a saved preset. The slot is left as-is so the user
+  // picks when they ate it; this does not enter edit mode.
+  const applyPreset = (p: MealPreset) => {
+    setName(p.name);
+    setKcal(String(p.kcal));
+    setProtein(String(p.protein));
+    setFat(String(p.fat));
+    setCarbs(String(p.carbs));
+    setError(null);
+  };
+
+  // Save the current form contents as a reusable preset (upsert by name).
+  const saveAsPreset = async () => {
+    const pV = num(protein);
+    const fV = num(fat);
+    const cV = num(carbs);
+    let kcalV = num(kcal);
+    if (kcalV === 0 && (pV || fV || cV)) {
+      kcalV = Math.round(pV * 4 + fV * 9 + cV * 4);
+    }
+    if (!name.trim()) {
+      setError('プリセット名(メニュー名)を入力してください');
+      return;
+    }
+    if (kcalV === 0 && pV === 0 && fV === 0 && cV === 0) {
+      setError('カロリーまたは PFC を入力してください');
+      return;
+    }
+    try {
+      await savePreset({ name: name.trim(), kcal: kcalV, protein: pV, fat: fV, carbs: cV });
+      setError(null);
+      setPresetMsg(`「${name.trim()}」を保存しました`);
+      window.setTimeout(() => setPresetMsg(null), 2500);
+    } catch (err) {
+      console.error('[meal:preset:save] failed', err);
+      setError('プリセット保存に失敗しました(ルール未反映の可能性)');
+    }
+  };
+
   const commitTargetWeight = async () => {
     const raw = twDraft.trim();
     if (raw === '') {
@@ -475,6 +525,54 @@ export function MealPanel({
             </div>
           )}
 
+          {presets.length > 0 && (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <p className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-sys-muted">
+                  <Bookmark className="h-3 w-3" /> プリセット
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setManagePresets((v) => !v)}
+                  className="text-[11px] text-sys-muted hover:text-sys-accent"
+                >
+                  {managePresets ? '完了' : '管理'}
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {presets.map((p) => (
+                  <div
+                    key={p.id}
+                    className="flex items-center border border-sys-border/30 text-xs"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => applyPreset(p)}
+                      disabled={busy}
+                      className="px-2.5 py-1 text-sys-text transition hover:text-sys-accent disabled:opacity-50"
+                      title={`${p.kcal}kcal · P${p.protein} F${p.fat} C${p.carbs}`}
+                    >
+                      {p.name}
+                      <span className="ml-1 font-mono text-[10px] text-sys-muted">
+                        {p.kcal}k
+                      </span>
+                    </button>
+                    {managePresets && (
+                      <button
+                        type="button"
+                        onClick={() => void removePreset(p.id)}
+                        className="border-l border-sys-border/30 px-1.5 py-1 text-sys-muted hover:text-sys-danger"
+                        aria-label={`プリセット「${p.name}」を削除`}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <ChipGroup
             value={slot}
             onChange={setSlot}
@@ -558,6 +656,19 @@ export function MealPanel({
             {editingId ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
             {busy ? '保存中…' : editingId ? '更新する' : '記録する'}
           </button>
+
+          <button
+            type="button"
+            onClick={() => void saveAsPreset()}
+            disabled={busy}
+            className="inline-flex w-full items-center justify-center gap-1.5 border border-sys-border/40 py-2 text-xs text-sys-muted transition hover:border-sys-accent hover:text-sys-accent disabled:opacity-50"
+          >
+            <BookmarkPlus className="h-3.5 w-3.5" />
+            現在の内容をプリセット保存
+          </button>
+          {presetMsg && (
+            <p className="text-center text-[11px] text-sys-ok">{presetMsg}</p>
+          )}
         </form>
       </SystemWindow>
       </div>

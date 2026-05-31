@@ -21,6 +21,7 @@ import type {
   HunterAppearance,
   Item,
   MealEntry,
+  MealPreset,
   Quest,
   Shadow,
   StatKey,
@@ -283,6 +284,49 @@ export async function updateMeal(
 
 export async function deleteMeal(id: string): Promise<void> {
   await deleteDoc(doc(requireDb(), 'meals', id));
+}
+
+// --- Meal presets (reusable meal templates) ----------------------------
+
+export function subscribeMealPresets(
+  uid: string,
+  onChange: (presets: MealPreset[]) => void,
+  onError?: (err: Error) => void
+): () => void {
+  const q = query(collection(requireDb(), 'mealPresets'), where('uid', '==', uid));
+  return onSnapshot(
+    q,
+    (snap) => {
+      const presets: MealPreset[] = [];
+      snap.forEach((s) => {
+        const data = s.data() as Omit<MealPreset, 'id'>;
+        presets.push({ ...data, id: s.id });
+      });
+      // Newest first as a stable default.
+      presets.sort((a, b) => b.createdAt - a.createdAt);
+      onChange(presets);
+    },
+    (err) => {
+      console.error('[mealPresets:subscribe] failed', err);
+      onError?.(err);
+    }
+  );
+}
+
+export async function addMealPreset(preset: Omit<MealPreset, 'id'>): Promise<string> {
+  const ref = await addDoc(collection(requireDb(), 'mealPresets'), preset);
+  return ref.id;
+}
+
+export async function updateMealPreset(
+  id: string,
+  patch: Partial<Omit<MealPreset, 'id' | 'uid' | 'createdAt'>>
+): Promise<void> {
+  await updateDoc(doc(requireDb(), 'mealPresets', id), patch as Record<string, unknown>);
+}
+
+export async function deleteMealPreset(id: string): Promise<void> {
+  await deleteDoc(doc(requireDb(), 'mealPresets', id));
 }
 
 // --- Shadow army --------------------------------------------------------

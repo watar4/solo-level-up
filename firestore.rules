@@ -51,6 +51,17 @@ service cloud.firestore {
       allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
     }
 
+    // Reusable meal presets (saved meal templates). Same uid-scoped
+    // ownership rule pattern as meals.
+    match /mealPresets/{id} {
+      allow read:   if request.auth != null && resource.data.uid == request.auth.uid;
+      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
+      allow update: if request.auth != null
+                    && resource.data.uid == request.auth.uid
+                    && request.resource.data.uid == request.auth.uid;
+      allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
+    }
+
     // Shadow army units — same uid-scoped pattern.
     match /shadows/{id} {
       allow read:   if request.auth != null && resource.data.uid == request.auth.uid;

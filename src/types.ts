@@ -176,6 +176,21 @@ export interface MealEntry {
   createdAt: number;
 }
 
+// A reusable meal template. Slot-less and date-less on purpose: a preset is
+// just "a dish + its macros" that the user can apply to the log form, then
+// pick the slot at logging time. Names are treated as the upsert key so
+// re-saving the same dish overwrites it instead of piling up duplicates.
+export interface MealPreset {
+  id: string;
+  uid: string;
+  name: string;
+  kcal: number;
+  protein: number; // g
+  fat: number;     // g
+  carbs: number;   // g
+  createdAt: number;
+}
+
 export type ShadowRarity = 'normal' | 'rare' | 'epic' | 'legendary';
 
 export const SHADOW_RARITY_ORDER: ShadowRarity[] = ['legendary', 'epic', 'rare', 'normal'];
