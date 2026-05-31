@@ -64,6 +64,12 @@ export interface Character {
   equippedSkills?: string[];
   // Continuous-mode boss tower progress. Floor = bossesDefeated + 1.
   bossesDefeated?: number;
+  // ----- nutrition / meal goal -----
+  weightTargetDate?: string;         // YYYY-MM-DD deadline that pairs with weightTarget
+  activityLevel?: ActivityLevel;     // maintenance-calorie multiplier
+  dietType?: DietType;               // PFC split preset
+  nutritionTarget?: NutritionTarget; // manual override; when set, used as-is instead of the auto value
+  lastNutritionRewardDate?: string;  // YYYY-MM-DD guard so the meal EXP is granted at most once/day
 }
 
 export type QuestType = 'daily' | 'weekly' | 'one-time';
@@ -96,6 +102,77 @@ export interface WeightEntry {
   uid: string;
   date: string;     // YYYY-MM-DD
   weight: number;   // kg, rounded to 1 decimal place
+  createdAt: number;
+}
+
+// ----- Meal / nutrition -----
+
+export type MealSlot = 'breakfast' | 'lunch' | 'dinner' | 'snack';
+
+export const MEAL_SLOT_LABELS: Record<MealSlot, string> = {
+  breakfast: '朝食',
+  lunch: '昼食',
+  dinner: '夕食',
+  snack: '間食',
+};
+
+export const MEAL_SLOT_ORDER: MealSlot[] = ['breakfast', 'lunch', 'dinner', 'snack'];
+
+// Diet style — drives the PFC split of the daily target. Calories come from
+// the weight-delta back-calculation; the diet type only redistributes them
+// across protein / fat / carbs.
+export type DietType = 'balanced' | 'highprotein' | 'lowcarb' | 'keto' | 'leanbulk';
+
+export const DIET_TYPE_LABELS: Record<DietType, { jp: string; desc: string }> = {
+  balanced: { jp: 'バランス', desc: 'P 1.8g/kg・脂質 25%' },
+  highprotein: { jp: '高タンパク減量', desc: 'P 2.2g/kg・脂質 25%' },
+  lowcarb: { jp: 'ローカーボ', desc: 'P 2.0g/kg・糖質 20%以下' },
+  keto: { jp: 'ケトジェニック', desc: 'P 2.0g/kg・糖質 50g固定' },
+  leanbulk: { jp: '増量(リーンバルク)', desc: 'P 1.8g/kg・脂質 20%' },
+};
+
+export const DIET_TYPE_ORDER: DietType[] = [
+  'balanced',
+  'highprotein',
+  'lowcarb',
+  'keto',
+  'leanbulk',
+];
+
+// Activity multiplier applied to a bodyweight-based maintenance estimate.
+// Four coarse levels keep the input simple (no height/age required).
+export type ActivityLevel = 'sedentary' | 'light' | 'moderate' | 'active';
+
+export const ACTIVITY_LABELS: Record<ActivityLevel, { jp: string; desc: string }> = {
+  sedentary: { jp: '座りがち', desc: 'デスクワーク中心' },
+  light: { jp: '軽い運動', desc: '週 1〜3 回の運動' },
+  moderate: { jp: '中程度', desc: '週 3〜5 回の運動' },
+  active: { jp: '活発', desc: '週 6〜7 回・肉体労働' },
+};
+
+export const ACTIVITY_ORDER: ActivityLevel[] = ['sedentary', 'light', 'moderate', 'active'];
+
+// Daily nutrition target in grams + kcal. Either auto-computed from the weight
+// goal (current/target weight + deadline + activity + diet) or manually set.
+export interface NutritionTarget {
+  kcal: number;
+  protein: number; // g
+  fat: number;     // g
+  carbs: number;   // g
+}
+
+// One logged meal. PFC in grams, calories in kcal. `date` groups a day's
+// meals together for the daily evaluation.
+export interface MealEntry {
+  id: string;
+  uid: string;
+  date: string;    // YYYY-MM-DD
+  slot: MealSlot;
+  name: string;
+  kcal: number;
+  protein: number; // g
+  fat: number;     // g
+  carbs: number;   // g
   createdAt: number;
 }
 
@@ -164,7 +241,7 @@ export interface WeightInboxEntry {
   source?: string;      // free-text, e.g. "ios-shortcut"
 }
 
-export type SystemEventKind = 'level-up' | 'achievement' | 'skill' | 'shadow' | 'boss' | 'inbox';
+export type SystemEventKind = 'level-up' | 'achievement' | 'skill' | 'shadow' | 'boss' | 'inbox' | 'nutrition';
 
 export interface SystemEvent {
   id: string;

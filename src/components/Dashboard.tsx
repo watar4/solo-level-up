@@ -27,7 +27,10 @@ import { BattleSkillsPanel } from './BattleSkillsPanel';
 import { AppearanceEditor } from './AppearanceEditor';
 import { InventoryPanel } from './InventoryPanel';
 import { ApiKeysPanel } from './ApiKeysPanel';
+import { MealPanel } from './MealPanel';
 import { SystemWindow } from './SystemWindow';
+import { TabBar, type DashboardTab } from './TabBar';
+import type { LucideIcon } from 'lucide-react';
 import { useShadows } from '../hooks/useShadows';
 import { useItems } from '../hooks/useItems';
 import { rollShadowDrop, RARITY_LABEL } from '../lib/shadows';
@@ -46,11 +49,11 @@ import {
   History,
   KeyRound,
   LogOut,
+  Palette,
   Plus,
   RotateCcw,
   ScrollText,
   Sparkles,
-  Swords,
   Zap,
 } from 'lucide-react';
 
@@ -71,6 +74,45 @@ interface Props {
 // naturally on screen; beyond that you advance the viewport one quest at a time.
 const VIEWPORT_SIZE = 5;
 
+// A large tile button used on the Combat / Records / Menu tab screens. The old
+// header crammed ~11 of these into one cramped row; the bottom-tab layout gives
+// each category its own screen so the tiles can breathe.
+function NavTile({
+  Icon,
+  label,
+  sublabel,
+  onClick,
+  accent = 'default',
+}: {
+  Icon: LucideIcon;
+  label: string;
+  sublabel?: string;
+  onClick: () => void;
+  accent?: 'default' | 'gold' | 'danger';
+}) {
+  const accentClass =
+    accent === 'gold'
+      ? 'hover:border-sys-gold hover:text-sys-gold'
+      : accent === 'danger'
+      ? 'hover:border-sys-danger hover:text-sys-danger'
+      : 'hover:border-sys-accent hover:text-sys-accent';
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex flex-col items-center justify-center gap-2 border border-sys-border/40 bg-black/30 px-4 py-6 text-center text-sys-text transition ${accentClass}`}
+    >
+      <Icon className="h-7 w-7" />
+      <span className="text-sm font-bold tracking-wide">{label}</span>
+      {sublabel && (
+        <span className="max-w-full truncate text-[10px] uppercase tracking-widest text-sys-muted">
+          {sublabel}
+        </span>
+      )}
+    </button>
+  );
+}
+
 export function Dashboard({ user, character, game, onSignOut }: Props) {
   const [questModal, setQuestModal] = useState<{ open: boolean; editing: Quest | null }>({
     open: false,
@@ -87,6 +129,9 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
   const [apiKeysOpen, setApiKeysOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [actionSheet, setActionSheet] = useState<ActionSheetState | null>(null);
+  // Active bottom-nav tab. Most feature panels stay as modals; the tab screens
+  // just re-home their trigger buttons out of the old cramped header row.
+  const [tab, setTab] = useState<DashboardTab>('home');
 
   // Shadow army subscription. Shadows now fight independently as boss
   // companions instead of granting passive stat bonuses.
@@ -239,7 +284,7 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
   const handleDragCancel = () => setDraggingId(null);
 
   return (
-    <div className="min-h-screen px-4 py-6 md:py-10">
+    <div className="min-h-screen px-4 py-6 pb-28 md:py-10 md:pb-28">
       <div className="mx-auto max-w-5xl">
         <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -251,85 +296,17 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
               LEVEL UP
             </h1>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button type="button" className="sys-button" onClick={() => setBossOpen(true)}>
-              <Swords className="h-4 w-4" />
-              ボス
-            </button>
-            <button type="button" className="sys-button" onClick={() => setBattleSkillsOpen(true)}>
-              <Zap className="h-4 w-4" />
-              戦技
-            </button>
-            <button type="button" className="sys-button" onClick={() => setShadowOpen(true)}>
-              <Crown className="h-4 w-4" />
-              影軍団
-              <span className="ml-1 text-[10px] font-mono text-sys-accent">
-                {shadowData.equippedCount}/{shadowData.shadows.length}
-              </span>
-            </button>
-            <button type="button" className="sys-button" onClick={() => setInventoryOpen(true)}>
-              <Backpack className="h-4 w-4" />
-              装備
-              {itemsData.equippedWeapon && (
-                <span className="ml-1 text-[10px] font-mono text-sys-accent">
-                  {itemsData.equippedWeapon.stat}
-                </span>
-              )}
-            </button>
-            <button type="button" className="sys-button" onClick={() => setStatsOpen(true)}>
-              <BarChart3 className="h-4 w-4" />
-              統計
-            </button>
-            <button type="button" className="sys-button" onClick={() => setHistoryOpen(true)}>
-              <History className="h-4 w-4" />
-              履歴
-            </button>
-            <button type="button" className="sys-button" onClick={() => setAchOpen(true)}>
-              <Award className="h-4 w-4" />
-              実績
-              <span className="ml-1 text-[10px] font-mono text-sys-gold">
-                {(character.unlocked?.achievements ?? []).length}
-              </span>
-            </button>
-            {game.isMaster && (
-              <button
-                type="button"
-                className="sys-button"
-                title="マスター状態に再初期化"
-                onClick={() => {
-                  if (
-                    window.confirm(
-                      'マスター状態に上書き初期化しますか?\n\nLv60 + 全stat99 + 影軍団5体の伝説でリセット (現キャラ消失)。'
-                    )
-                  ) {
-                    void game.initializeMaster();
-                  }
-                }}
-              >
-                <Sparkles className="h-4 w-4" />
-                MASTER
-              </button>
-            )}
-            <button
-              type="button"
-              className="sys-button"
-              onClick={() => setApiKeysOpen(true)}
-              title="iPhone ヘルスケア連携 (API キー管理)"
-            >
-              <KeyRound className="h-4 w-4" />
-              連携
-            </button>
-            <button type="button" className="sys-button sys-button-danger" onClick={() => setResetOpen(true)}>
-              <RotateCcw className="h-4 w-4" />
-              リセット
-            </button>
-            <button type="button" className="sys-button" onClick={onSignOut}>
-              <LogOut className="h-4 w-4" />
-              ログアウト
-            </button>
+          <div className="text-right">
+            <p className="font-mono text-xs text-sys-muted">
+              Lv.<span className="text-sys-accent">{character.level}</span>
+            </p>
+            <p className="text-[10px] uppercase tracking-widest text-sys-muted">
+              {character.name}
+            </p>
           </div>
         </header>
 
+        {tab === 'home' && (
         <div className="grid gap-6 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
           <SystemWindow title="Quest Log" subtitle="daily missions">
             <div className="mb-3 flex items-center justify-between">
@@ -479,6 +456,122 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
             </SystemWindow>
           </div>
         </div>
+        )}
+
+        {tab === 'meal' && (
+          <MealPanel
+            uid={user.uid}
+            character={character}
+            onSetWeightTarget={game.setWeightTarget}
+            onSetNutritionConfig={game.setNutritionConfig}
+            onSetNutritionTarget={game.setNutritionTarget}
+            onAwardNutritionExp={game.awardNutritionExp}
+          />
+        )}
+
+        {tab === 'combat' && (
+          <div className="mx-auto max-w-xl">
+            <SystemWindow title="Combat" subtitle="battle & army">
+              <div className="grid grid-cols-2 gap-3">
+                <NavTile
+                  Icon={Crown}
+                  label="デイリーボス"
+                  sublabel="boss raid"
+                  accent="gold"
+                  onClick={() => setBossOpen(true)}
+                />
+                <NavTile
+                  Icon={Zap}
+                  label="戦技"
+                  sublabel="battle skills"
+                  onClick={() => setBattleSkillsOpen(true)}
+                />
+                <NavTile
+                  Icon={Sparkles}
+                  label="影軍団"
+                  sublabel={`${shadowData.equippedCount}/${shadowData.shadows.length} 編成`}
+                  onClick={() => setShadowOpen(true)}
+                />
+                <NavTile
+                  Icon={Backpack}
+                  label="装備"
+                  sublabel={itemsData.equippedWeapon ? itemsData.equippedWeapon.name : '未装備'}
+                  onClick={() => setInventoryOpen(true)}
+                />
+              </div>
+            </SystemWindow>
+          </div>
+        )}
+
+        {tab === 'records' && (
+          <div className="mx-auto max-w-xl">
+            <SystemWindow title="Records" subtitle="stats & history">
+              <div className="grid grid-cols-2 gap-3">
+                <NavTile
+                  Icon={BarChart3}
+                  label="統計"
+                  sublabel="statistics"
+                  onClick={() => setStatsOpen(true)}
+                />
+                <NavTile
+                  Icon={History}
+                  label="履歴"
+                  sublabel="quest log"
+                  onClick={() => setHistoryOpen(true)}
+                />
+                <NavTile
+                  Icon={Award}
+                  label="実績"
+                  sublabel="achievements"
+                  onClick={() => setAchOpen(true)}
+                />
+              </div>
+            </SystemWindow>
+          </div>
+        )}
+
+        {tab === 'menu' && (
+          <div className="mx-auto max-w-xl">
+            <SystemWindow title="Menu" subtitle="settings & account">
+              <div className="grid grid-cols-2 gap-3">
+                <NavTile
+                  Icon={KeyRound}
+                  label="連携 / API"
+                  sublabel="integrations"
+                  onClick={() => setApiKeysOpen(true)}
+                />
+                <NavTile
+                  Icon={Palette}
+                  label="外見編集"
+                  sublabel="appearance"
+                  onClick={() => setAppearanceOpen(true)}
+                />
+                {!game.isMaster && (
+                  <NavTile
+                    Icon={Crown}
+                    label="MASTER化"
+                    sublabel="unlock all"
+                    accent="gold"
+                    onClick={() => void game.initializeMaster()}
+                  />
+                )}
+                <NavTile
+                  Icon={LogOut}
+                  label="ログアウト"
+                  sublabel="sign out"
+                  onClick={onSignOut}
+                />
+                <NavTile
+                  Icon={RotateCcw}
+                  label="リセット"
+                  sublabel="reset account"
+                  accent="danger"
+                  onClick={() => setResetOpen(true)}
+                />
+              </div>
+            </SystemWindow>
+          </div>
+        )}
 
         <footer className="mt-10 text-center text-[11px] text-sys-muted">
           Solo Level Up · made with Vite + Firebase ·{' '}
@@ -617,6 +710,8 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
         onClose={() => setResetOpen(false)}
         onConfirm={() => game.resetAccount()}
       />
+
+      <TabBar active={tab} onChange={setTab} />
     </div>
   );
 }

@@ -23,8 +23,11 @@ import {
 import { doc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import type {
+  ActivityLevel,
   Character,
+  DietType,
   HunterAppearance,
+  NutritionTarget,
   Quest,
   StatKey,
   SystemEvent,
@@ -37,7 +40,6 @@ import {
   rankForLevel,
   todayKey,
   yesterdayKey,
-  thisWeekKey,
   previousDayKey,
 } from '../lib/leveling';
 import {
@@ -75,6 +77,18 @@ export interface GameData {
   incrementBossesDefeated: () => Promise<void>;
   allocateStatPoint: (stat: StatKey) => Promise<void>;
   setWeightTarget: (target: number | null) => Promise<void>;
+  // Persist the nutrition-goal inputs (diet preset / activity level / deadline).
+  // Pass only the fields you want to change; null on weightTargetDate clears it.
+  setNutritionConfig: (patch: {
+    dietType?: DietType;
+    activityLevel?: ActivityLevel;
+    weightTargetDate?: string | null;
+  }) => Promise<void>;
+  // Store a manual PFC/kcal override (null reverts to the auto-computed value).
+  setNutritionTarget: (target: NutritionTarget | null) => Promise<void>;
+  // Grant the once-daily "hit your nutrition goal" EXP. No-ops (returns false)
+  // if already granted for `dateKey`. Returns true when EXP was awarded.
+  awardNutritionExp: (amount: number, dateKey: string) => Promise<boolean>;
   resetAccount: () => Promise<void>;
   // Master-only: overwrite the current character + grant 5 legendary
   // shadows. Visible/usable in the UI only for emails in MASTER_EMAILS.
@@ -88,10 +102,10 @@ export interface GameData {
 }
 
 function isQuestDoneToday(quest: Quest): boolean {
-  if (quest.type === 'daily') return quest.completedDates.includes(todayKey());
-  if (quest.type === 'weekly') {
-    const wk = thisWeekKey();
-    return quest.completedDates.some((d) => d.startsWith(wk));
+  // Daily and weekly are both checkable once per day; weekly simply
+  // accumulates those daily checks across the week (see weeklyCompletionCount).
+  if (quest.type === 'daily' || quest.type === 'weekly') {
+    return quest.completedDates.includes(todayKey());
   }
   return quest.completedDates.length > 0;
 }
@@ -699,6 +713,49 @@ export function useGameData(user: User | null): GameData {
     [user, character]
   );
 
+  const setNutritionConfig = useCallback(
+    async (patch: {
+      dietType?: DietType;
+      activityLevel?: ActivityLevel;
+      weightTargetDate?: string | null;
+    }): Promise<void> => {
+      if (!user || !character) return;
+      const next: Character = { ...character };
+      const update: Partial<Character> = {};
+      if (patch.dietType !== undefined) {
+        next.dietType = patch.dietType;
+        update.dietType = patch.dietType;
+      }
+      if (patch.activityLevel !== undefined) {
+        next.activityLevel = patch.activityLevel;
+        update.activityLevel = patch.activityLevel;
+      }
+      if (patch.weightTargetDate !== undefined) {
+        const v = patch.weightTargetDate;
+        next.weightTargetDate = v === null ? undefined : v;
+        // null is stored to mean "cleared" (same convention as weightTarget).
+        update.weightTargetDate = (v === null ? null : v) as string | undefined;
+      }
+      setCharacter(next);
+      await updateCharacter(user.uid, update);
+    },
+    [user, character]
+  );
+
+  const setNutritionTarget = useCallback(
+    async (target: NutritionTarget | null): Promise<void> => {
+      if (!user || !character) return;
+      setCharacter({
+        ...character,
+        nutritionTarget: target === null ? undefined : target,
+      });
+      await updateCharacter(user.uid, {
+        nutritionTarget: (target === null ? null : target) as NutritionTarget | undefined,
+      });
+    },
+    [user, character]
+  );
+
   const enqueueEvent = useCallback(
     (event: SystemEvent) => {
       enqueue([event]);
@@ -763,6 +820,80 @@ export function useGameData(user: User | null): GameData {
     [user, character, enqueue]
   );
 
+  // Once-daily nutrition reward. Self-contained (does not call awardExp) so
+  // the EXP bump and the lastNutritionRewardDate guard land in a single
+  // setCharacter/updateCharacter pair — avoids a stale-closure race that would
+  // otherwise clobber one of the two writes.
+  const awardNutritionExp = useCallback(
+    async (amount: number, dateKey: string): Promise<boolean> => {
+      if (!user || !character || amount <= 0) return false;
+      if (character.lastNutritionRewardDate === dateKey) return false; // already today
+      const oldLevel = character.level;
+      const result = applyExp(
+        character.level,
+        character.exp,
+        character.totalExp,
+        amount
+      );
+      const updated: Character = {
+        ...character,
+        level: result.level,
+        exp: result.exp,
+        totalExp: result.totalExp,
+        statPoints: character.statPoints + result.statPointsGained,
+        lastNutritionRewardDate: dateKey,
+        lastSeenAt: Date.now(),
+      };
+      setCharacter(updated);
+      await updateCharacter(user.uid, {
+        level: updated.level,
+        exp: updated.exp,
+        totalExp: updated.totalExp,
+        statPoints: updated.statPoints,
+        lastNutritionRewardDate: dateKey,
+        lastSeenAt: updated.lastSeenAt,
+      });
+      const events: SystemEvent[] = [
+        {
+          id: `nutrition:${dateKey}`,
+          kind: 'nutrition',
+          title: '食事目標 達成',
+          primary: `+${amount} EXP`,
+          secondary: '本日の栄養バランスをクリア',
+          icon: '🍽️',
+          accent: 'cyan',
+        },
+      ];
+      if (result.levelsGained > 0) {
+        events.push({
+          id: `level-up:nutrition:${Date.now()}`,
+          kind: 'level-up',
+          title: 'Level Up!',
+          primary: `Lv.${oldLevel} → Lv.${result.level}`,
+          secondary: `+${result.statPointsGained} ステータスポイント`,
+          icon: '⭐',
+          accent: 'cyan',
+        });
+        const oldRank = rankForLevel(oldLevel);
+        const newRank = rankForLevel(result.level);
+        if (oldRank !== newRank) {
+          events.push({
+            id: `rank-up:nutrition:${Date.now()}`,
+            kind: 'level-up',
+            title: 'ランクアップ',
+            primary: `${oldRank}  →  ${newRank}`,
+            secondary: `${newRank} ランクハンターに昇格`,
+            icon: '🏅',
+            accent: 'gold',
+          });
+        }
+      }
+      enqueue(events);
+      return true;
+    },
+    [user, character, enqueue]
+  );
+
   const popEvent = useCallback(() => {
     setPendingEvents((prev) => prev.slice(1));
   }, []);
@@ -807,6 +938,9 @@ export function useGameData(user: User | null): GameData {
     incrementBossesDefeated,
     allocateStatPoint,
     setWeightTarget,
+    setNutritionConfig,
+    setNutritionTarget,
+    awardNutritionExp,
     resetAccount,
     enqueueEvent,
     awardExp,

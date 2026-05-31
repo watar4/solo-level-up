@@ -20,6 +20,7 @@ import type {
   Character,
   HunterAppearance,
   Item,
+  MealEntry,
   Quest,
   Shadow,
   StatKey,
@@ -224,6 +225,45 @@ export async function addWeightEntry(entry: Omit<WeightEntry, 'id'>): Promise<st
 
 export async function deleteWeightEntry(id: string): Promise<void> {
   await deleteDoc(doc(requireDb(), 'weightEntries', id));
+}
+
+// --- Meal / nutrition log -----------------------------------------------
+
+export function subscribeMeals(
+  uid: string,
+  onChange: (entries: MealEntry[]) => void,
+  onError?: (err: Error) => void
+): () => void {
+  const q = query(collection(requireDb(), 'meals'), where('uid', '==', uid));
+  return onSnapshot(
+    q,
+    (snap) => {
+      const entries: MealEntry[] = [];
+      snap.forEach((s) => {
+        const data = s.data() as Omit<MealEntry, 'id'>;
+        entries.push({ ...data, id: s.id });
+      });
+      // Newest first; tiebreak by createdAt so the log reads top-to-bottom.
+      entries.sort((a, b) => {
+        if (a.date !== b.date) return b.date.localeCompare(a.date);
+        return b.createdAt - a.createdAt;
+      });
+      onChange(entries);
+    },
+    (err) => {
+      console.error('[meals:subscribe] failed', err);
+      onError?.(err);
+    }
+  );
+}
+
+export async function addMeal(entry: Omit<MealEntry, 'id'>): Promise<string> {
+  const ref = await addDoc(collection(requireDb(), 'meals'), entry);
+  return ref.id;
+}
+
+export async function deleteMeal(id: string): Promise<void> {
+  await deleteDoc(doc(requireDb(), 'meals', id));
 }
 
 // --- Shadow army --------------------------------------------------------
