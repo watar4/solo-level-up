@@ -55,7 +55,7 @@ Firestore に直接 POST → 次回アプリ起動時に取り込まれる仕組
 ## 開発環境のセットアップ
 
 ```powershell
-cd D:\作成ツール\solo_level_up
+cd C:\Users\ihciu\ツール\solo-level-up
 npm install
 ```
 

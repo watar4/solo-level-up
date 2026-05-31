@@ -1,7 +1,13 @@
 import type { Quest } from '../types';
 import { DIFFICULTY_EXP, STAT_LABELS } from '../types';
-import { daysUntilWeekReset, effectiveStreak, todayKey, yesterdayKey } from '../lib/leveling';
-import { Check, Clock, Flame, GripVertical, MoreVertical } from 'lucide-react';
+import {
+  daysUntilWeekReset,
+  effectiveStreak,
+  todayKey,
+  weeklyCompletionCount,
+  yesterdayKey,
+} from '../lib/leveling';
+import { Check, Clock, Flame, GripVertical, MoreVertical, Layers } from 'lucide-react';
 
 // Pass-through type for dnd-kit's useSortable listeners. We treat it
 // opaquely — it's just a record of handlers to spread onto the drag handle.
@@ -59,6 +65,8 @@ export function QuestCard({
     !quest.completedDates.includes(todayKey()) &&
     quest.completedDates.includes(yesterdayKey());
   const weekResetDays = quest.type === 'weekly' ? daysUntilWeekReset() : null;
+  const weeklyCount =
+    quest.type === 'weekly' ? weeklyCompletionCount(quest.completedDates) : 0;
 
   return (
     <div
@@ -131,14 +139,23 @@ export function QuestCard({
                 連続記録 途切れ
               </span>
             )}
-            {weekResetDays !== null && (
+            {quest.type === 'weekly' && (
               <span
                 className={`inline-flex items-center gap-1 ${
-                  doneToday ? 'text-sys-muted' : 'text-sys-text/70'
+                  weeklyCount > 0 ? 'text-sys-gold' : 'text-sys-muted'
                 }`}
+                title="今週チェックした回数"
               >
+                <Layers className="h-3 w-3" />
+                今週 {weeklyCount} 回
+              </span>
+            )}
+            {weekResetDays !== null && (
+              <span className="inline-flex items-center gap-1 text-sys-muted">
                 <Clock className="h-3 w-3" />
-                {doneToday ? `次回まで残り ${weekResetDays} 日` : `今週中: あと ${weekResetDays} 日`}
+                {doneToday
+                  ? `今日達成済 · リセットまで ${weekResetDays} 日`
+                  : `リセットまで ${weekResetDays} 日`}
               </span>
             )}
           </div>

@@ -88,15 +88,26 @@ export function previousDayKey(key: string): string {
   return formatDateKey(date);
 }
 
-// ISO week key, e.g. 2026-W21 — used to tell whether a weekly quest is done this week.
-export function thisWeekKey(): string {
-  const d = new Date();
-  const target = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+// ISO week key for an arbitrary YYYY-MM-DD date, e.g. 2026-W21.
+export function weekKeyForDate(dateKey: string): string {
+  const [y, m, d] = dateKey.split('-').map(Number);
+  const target = new Date(Date.UTC(y, m - 1, d));
   const dayNum = target.getUTCDay() || 7;
   target.setUTCDate(target.getUTCDate() + 4 - dayNum);
   const yearStart = new Date(Date.UTC(target.getUTCFullYear(), 0, 1));
   const weekNo = Math.ceil(((target.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
   return `${target.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
+}
+
+// ISO week key for today, e.g. 2026-W21.
+export function thisWeekKey(): string {
+  return weekKeyForDate(todayKey());
+}
+
+// How many times a weekly quest has been checked during the current ISO week.
+export function weeklyCompletionCount(completedDates: string[]): number {
+  const wk = thisWeekKey();
+  return completedDates.filter((d) => weekKeyForDate(d) === wk).length;
 }
 
 // Days until the next ISO week starts (next Monday). If today is Monday, returns 7.
