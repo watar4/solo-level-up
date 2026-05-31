@@ -17,13 +17,15 @@ interface Props {
 }
 
 // Fixed bottom tab bar — the primary navigation on mobile. Replaces the old
-// cramped header button row. iOS safe-area inset keeps it clear of the home
-// indicator. Modals (z-50) intentionally render above this bar (z-40).
+// cramped header button row. The bottom padding = iOS safe-area inset plus a
+// little extra breathing room so the tappable area sits clear of the home
+// indicator / gesture zone and is easier to hit on phones. Modals (z-50)
+// intentionally render above this bar (z-40).
 export function TabBar({ active, onChange }: Props) {
   return (
     <nav
       className="fixed inset-x-0 bottom-0 z-40 border-t border-sys-border/50 bg-[#04070f]/95 backdrop-blur-sm"
-      style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+      style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 0.5rem)' }}
     >
       <div className="mx-auto flex max-w-5xl">
         {TABS.map(({ id, label, Icon }) => {
