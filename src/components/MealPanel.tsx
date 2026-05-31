@@ -446,7 +446,8 @@ export function MealPanel({
               P (g)
               <input
                 type="number"
-                inputMode="numeric"
+                inputMode="decimal"
+                step="any"
                 min={0}
                 placeholder="0"
                 value={protein}
@@ -459,7 +460,8 @@ export function MealPanel({
               F (g)
               <input
                 type="number"
-                inputMode="numeric"
+                inputMode="decimal"
+                step="any"
                 min={0}
                 placeholder="0"
                 value={fat}
@@ -472,7 +474,8 @@ export function MealPanel({
               C (g)
               <input
                 type="number"
-                inputMode="numeric"
+                inputMode="decimal"
+                step="any"
                 min={0}
                 placeholder="0"
                 value={carbs}

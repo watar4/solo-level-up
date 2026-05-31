@@ -30,18 +30,21 @@ export function useMeals(uid: string | null): MealsData {
   const addMeal = useCallback(
     async (input: MealInput): Promise<void> => {
       if (!uid) return;
-      // Clamp to non-negative integers — the form already validates, but this
-      // protects the daily totals from stray negative/NaN values.
-      const clean = (n: number) => (Number.isFinite(n) && n > 0 ? Math.round(n) : 0);
+      // Guard against stray negative/NaN values. Calories stay whole numbers;
+      // PFC keep one decimal place so entries like "12.5 g" survive (the form
+      // accepts decimals).
+      const intClamp = (n: number) => (Number.isFinite(n) && n > 0 ? Math.round(n) : 0);
+      const round1 = (n: number) =>
+        Number.isFinite(n) && n > 0 ? Math.round(n * 10) / 10 : 0;
       await addMealDoc({
         uid,
         date: input.date,
         slot: input.slot,
         name: input.name.trim() || '無名の食事',
-        kcal: clean(input.kcal),
-        protein: clean(input.protein),
-        fat: clean(input.fat),
-        carbs: clean(input.carbs),
+        kcal: intClamp(input.kcal),
+        protein: round1(input.protein),
+        fat: round1(input.fat),
+        carbs: round1(input.carbs),
         createdAt: Date.now(),
       });
     },
