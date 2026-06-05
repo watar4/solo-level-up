@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import type { User } from 'firebase/auth';
 import {
   DndContext,
@@ -17,18 +17,22 @@ import { SortableQuestCard } from './SortableQuestCard';
 import { AddQuestModal } from './AddQuestModal';
 import { QuestActionSheet } from './QuestActionSheet';
 import { SystemToast } from './SystemToast';
-import { HistoryPanel } from './HistoryPanel';
-import { AchievementsPanel } from './AchievementsPanel';
-import { ResetAccountModal } from './ResetAccountModal';
-import { StatsDashboard } from './StatsDashboard';
-import { ShadowArmyPanel } from './ShadowArmyPanel';
-import { DailyBossPanel } from './DailyBossPanel';
-import { BattleSkillsPanel } from './BattleSkillsPanel';
-import { AppearanceEditor } from './AppearanceEditor';
-import { InventoryPanel } from './InventoryPanel';
-import { ApiKeysPanel } from './ApiKeysPanel';
-import { MealPanel } from './MealPanel';
 import { SystemWindow } from './SystemWindow';
+// Heavy / secondary panels are code-split: each chunk only downloads the
+// first time the user opens it. Combined with the conditional `{open && ...}`
+// renders below this drops the initial JS chunk meaningfully (Meal/AI,
+// charts, boss combat, shadow inventory, etc. are not on the critical path).
+const HistoryPanel       = lazy(() => import('./HistoryPanel').then((m) => ({ default: m.HistoryPanel })));
+const AchievementsPanel  = lazy(() => import('./AchievementsPanel').then((m) => ({ default: m.AchievementsPanel })));
+const ResetAccountModal  = lazy(() => import('./ResetAccountModal').then((m) => ({ default: m.ResetAccountModal })));
+const StatsDashboard     = lazy(() => import('./StatsDashboard').then((m) => ({ default: m.StatsDashboard })));
+const ShadowArmyPanel    = lazy(() => import('./ShadowArmyPanel').then((m) => ({ default: m.ShadowArmyPanel })));
+const DailyBossPanel     = lazy(() => import('./DailyBossPanel').then((m) => ({ default: m.DailyBossPanel })));
+const BattleSkillsPanel  = lazy(() => import('./BattleSkillsPanel').then((m) => ({ default: m.BattleSkillsPanel })));
+const AppearanceEditor   = lazy(() => import('./AppearanceEditor').then((m) => ({ default: m.AppearanceEditor })));
+const InventoryPanel     = lazy(() => import('./InventoryPanel').then((m) => ({ default: m.InventoryPanel })));
+const ApiKeysPanel       = lazy(() => import('./ApiKeysPanel').then((m) => ({ default: m.ApiKeysPanel })));
+const MealPanel          = lazy(() => import('./MealPanel').then((m) => ({ default: m.MealPanel })));
 import { TabBar, type DashboardTab } from './TabBar';
 import type { LucideIcon } from 'lucide-react';
 import { useShadows } from '../hooks/useShadows';
@@ -484,14 +488,16 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
         )}
 
         {tab === 'meal' && (
-          <MealPanel
-            uid={user.uid}
-            character={character}
-            onSetWeightTarget={game.setWeightTarget}
-            onSetNutritionConfig={game.setNutritionConfig}
-            onSetNutritionTarget={game.setNutritionTarget}
-            onAwardNutritionExp={game.awardNutritionExp}
-          />
+          <Suspense fallback={<div className="py-10 text-center text-sys-muted">読み込み中…</div>}>
+            <MealPanel
+              uid={user.uid}
+              character={character}
+              onSetWeightTarget={game.setWeightTarget}
+              onSetNutritionConfig={game.setNutritionConfig}
+              onSetNutritionTarget={game.setNutritionTarget}
+              onAwardNutritionExp={game.awardNutritionExp}
+            />
+          </Suspense>
         )}
 
         {tab === 'combat' && (
@@ -636,78 +642,104 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
       />
 
       <SystemToast event={game.pendingEvents[0] ?? null} onDismiss={game.popEvent} />
-      <HistoryPanel open={historyOpen} uid={user.uid} quests={game.quests} onClose={() => setHistoryOpen(false)} />
-      <StatsDashboard
-        open={statsOpen}
-        uid={user.uid}
-        character={character}
-        quests={game.quests}
-        onClose={() => setStatsOpen(false)}
-      />
-      <ShadowArmyPanel
-        open={shadowOpen}
-        shadows={shadowData.shadows}
-        onClose={() => setShadowOpen(false)}
-        onEquip={shadowData.equipShadow}
-        onUnequip={shadowData.unequipShadow}
-        onDiscard={shadowData.discardShadow}
-      />
-      <BattleSkillsPanel
-        open={battleSkillsOpen}
-        character={character}
-        onClose={() => setBattleSkillsOpen(false)}
-        onSave={game.setEquippedSkills}
-      />
-      <AppearanceEditor
-        open={appearanceOpen}
-        current={character.appearance}
-        onClose={() => setAppearanceOpen(false)}
-        onSave={game.updateAppearance}
-      />
-      <DailyBossPanel
-        open={bossOpen}
-        uid={user.uid}
-        character={character}
-        effectiveStats={effectiveStats}
-        equippedShadows={shadowData.equippedShadows}
-        onClose={() => setBossOpen(false)}
-        onAwardShadow={async (templateId) => {
-          const shadow = await shadowData.awardShadow(templateId);
-          if (!shadow) return null;
-          return { id: shadow.id, name: shadow.name };
-        }}
-        onAwardWeapon={async (templateId) => {
-          const w = await itemsData.awardWeapon(templateId);
-          if (!w) return null;
-          return { id: w.id, name: w.name };
-        }}
-        onIncrementFloor={game.incrementBossesDefeated}
-        // Boss results are already displayed inside the boss panel itself
-        // (victory + extraction UI, defeat + retry button). Suppress the
-        // center-screen SystemToast so it doesn't cover the panel.
-        onEnqueueBossEvent={() => undefined}
-      />
-      <InventoryPanel
-        open={inventoryOpen}
-        items={itemsData.items}
-        onClose={() => setInventoryOpen(false)}
-        onEquip={itemsData.equipWeapon}
-        onUnequip={itemsData.unequipWeapon}
-        onDiscard={itemsData.discardItem}
-      />
-      <AchievementsPanel open={achOpen} character={character} onClose={() => setAchOpen(false)} />
-      <ApiKeysPanel
-        open={apiKeysOpen}
-        uid={user.uid}
-        onClose={() => setApiKeysOpen(false)}
-      />
-      <ResetAccountModal
-        open={resetOpen}
-        character={character}
-        quests={game.quests}
-        onClose={() => setResetOpen(false)}
-        onConfirm={() => game.resetAccount()}
-      />
+      {/* Every modal below is rendered conditionally (`{open && ...}`) AND is
+          a React.lazy component, so its chunk only loads on first open. The
+          single shared Suspense fallback is `null` because modals are
+          ephemeral — a flicker is preferable to a layout-shifting spinner. */}
+      <Suspense fallback={null}>
+        {historyOpen && (
+          <HistoryPanel open={historyOpen} uid={user.uid} quests={game.quests} onClose={() => setHistoryOpen(false)} />
+        )}
+        {statsOpen && (
+          <StatsDashboard
+            open={statsOpen}
+            uid={user.uid}
+            character={character}
+            quests={game.quests}
+            onClose={() => setStatsOpen(false)}
+          />
+        )}
+        {shadowOpen && (
+          <ShadowArmyPanel
+            open={shadowOpen}
+            shadows={shadowData.shadows}
+            onClose={() => setShadowOpen(false)}
+            onEquip={shadowData.equipShadow}
+            onUnequip={shadowData.unequipShadow}
+            onDiscard={shadowData.discardShadow}
+          />
+        )}
+        {battleSkillsOpen && (
+          <BattleSkillsPanel
+            open={battleSkillsOpen}
+            character={character}
+            onClose={() => setBattleSkillsOpen(false)}
+            onSave={game.setEquippedSkills}
+          />
+        )}
+        {appearanceOpen && (
+          <AppearanceEditor
+            open={appearanceOpen}
+            current={character.appearance}
+            onClose={() => setAppearanceOpen(false)}
+            onSave={game.updateAppearance}
+          />
+        )}
+        {bossOpen && (
+          <DailyBossPanel
+            open={bossOpen}
+            uid={user.uid}
+            character={character}
+            effectiveStats={effectiveStats}
+            equippedShadows={shadowData.equippedShadows}
+            onClose={() => setBossOpen(false)}
+            onAwardShadow={async (templateId) => {
+              const shadow = await shadowData.awardShadow(templateId);
+              if (!shadow) return null;
+              return { id: shadow.id, name: shadow.name };
+            }}
+            onAwardWeapon={async (templateId) => {
+              const w = await itemsData.awardWeapon(templateId);
+              if (!w) return null;
+              return { id: w.id, name: w.name };
+            }}
+            onIncrementFloor={game.incrementBossesDefeated}
+            // Boss results are already displayed inside the boss panel itself
+            // (victory + extraction UI, defeat + retry button). Suppress the
+            // center-screen SystemToast so it doesn't cover the panel.
+            onEnqueueBossEvent={() => undefined}
+          />
+        )}
+        {inventoryOpen && (
+          <InventoryPanel
+            open={inventoryOpen}
+            items={itemsData.items}
+            onClose={() => setInventoryOpen(false)}
+            onEquip={itemsData.equipWeapon}
+            onUnequip={itemsData.unequipWeapon}
+            onDiscard={itemsData.discardItem}
+          />
+        )}
+        {achOpen && (
+          <AchievementsPanel open={achOpen} character={character} onClose={() => setAchOpen(false)} />
+        )}
+        {apiKeysOpen && (
+          <ApiKeysPanel
+            open={apiKeysOpen}
+            uid={user.uid}
+            onClose={() => setApiKeysOpen(false)}
+          />
+        )}
+        {resetOpen && (
+          <ResetAccountModal
+            open={resetOpen}
+            character={character}
+            quests={game.quests}
+            onClose={() => setResetOpen(false)}
+            onConfirm={() => game.resetAccount()}
+          />
+        )}
+      </Suspense>
 
       <TabBar active={tab} onChange={setTab} />
     </div>

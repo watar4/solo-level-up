@@ -167,3 +167,25 @@
     outline-offset: 3px;
   }
 }
+
+/* Respect the user's OS-level "reduce motion" preference. iOS/macOS users who
+   enable this in accessibility settings get all decorative motion neutralised
+   while functional state changes (opacity for visibility, color for state)
+   still render. Covers our own keyframes (scan / flash / quest-pickup) plus
+   third-party libs (framer-motion, dnd-kit transforms). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .quest-picked-up {
+    animation: none !important;
+    /* keep the outline so drag mode is still visually distinct */
+    transform: none !important;
+    filter: none !important;
+  }
+}
