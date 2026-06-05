@@ -14,10 +14,14 @@ import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { StatusPanel } from './StatusPanel';
 import { QuestCard } from './QuestCard';
 import { SortableQuestCard } from './SortableQuestCard';
-import { AddQuestModal } from './AddQuestModal';
-import { QuestActionSheet } from './QuestActionSheet';
 import { SystemToast } from './SystemToast';
 import { SystemWindow } from './SystemWindow';
+// AddQuestModal / QuestActionSheet are gated behind explicit user actions
+// (tapping the issue button or long-pressing a quest), so we can defer their
+// chunks too. The first interaction has a tiny network round-trip but the
+// quest list itself renders faster on cold load.
+const AddQuestModal     = lazy(() => import('./AddQuestModal').then((m) => ({ default: m.AddQuestModal })));
+const QuestActionSheet  = lazy(() => import('./QuestActionSheet').then((m) => ({ default: m.QuestActionSheet })));
 // Heavy / secondary panels are code-split: each chunk only downloads the
 // first time the user opens it. Combined with the conditional `{open && ...}`
 // renders below this drops the initial JS chunk meaningfully (Meal/AI,
@@ -590,56 +594,63 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
         </footer>
       </div>
 
-      <AddQuestModal
-        open={questModal.open}
-        initial={questModal.editing}
-        onClose={() => setQuestModal({ open: false, editing: null })}
-        onSubmit={async (input) => {
-          if (questModal.editing) {
-            await game.editQuest(questModal.editing, input);
-          } else {
-            await createQuest({
-              uid: user.uid,
-              title: input.title,
-              description: input.description,
-              type: input.type,
-              targetStat: input.targetStat,
-              difficulty: input.difficulty,
-              completedDates: [],
-              streak: 0,
-              createdAt: Date.now(),
-              archived: false,
-            });
-          }
-        }}
-      />
+      <Suspense fallback={null}>
+        {questModal.open && (
+          <AddQuestModal
+            open={questModal.open}
+            initial={questModal.editing}
+            onClose={() => setQuestModal({ open: false, editing: null })}
+            onSubmit={async (input) => {
+              if (questModal.editing) {
+                await game.editQuest(questModal.editing, input);
+              } else {
+                await createQuest({
+                  uid: user.uid,
+                  title: input.title,
+                  description: input.description,
+                  type: input.type,
+                  targetStat: input.targetStat,
+                  difficulty: input.difficulty,
+                  completedDates: [],
+                  streak: 0,
+                  createdAt: Date.now(),
+                  archived: false,
+                });
+              }
+            }}
+          />
+        )}
+      </Suspense>
 
-      <QuestActionSheet
-        quest={actionSheet?.quest ?? null}
-        canMoveUp={!!actionSheet && !actionSheet.isArchived && actionSheet.fullIdx > 0}
-        canMoveDown={
-          !!actionSheet &&
-          !actionSheet.isArchived &&
-          actionSheet.fullIdx < active.length - 1
-        }
-        onClose={() => setActionSheet(null)}
-        onEdit={() => {
-          if (actionSheet) setQuestModal({ open: true, editing: actionSheet.quest });
-        }}
-        onMoveUp={() => {
-          if (actionSheet && !actionSheet.isArchived) {
-            handleMoveUp(actionSheet.quest);
-          }
-        }}
-        onMoveDown={() => {
-          if (actionSheet && !actionSheet.isArchived) {
-            handleMoveDown(actionSheet.quest);
-          }
-        }}
-        onDelete={() => {
-          if (actionSheet) handleDelete(actionSheet.quest);
-        }}
-      />
+      <Suspense fallback={null}>
+        {actionSheet && (
+          <QuestActionSheet
+            quest={actionSheet.quest}
+            canMoveUp={!actionSheet.isArchived && actionSheet.fullIdx > 0}
+            canMoveDown={
+              !actionSheet.isArchived &&
+              actionSheet.fullIdx < active.length - 1
+            }
+            onClose={() => setActionSheet(null)}
+            onEdit={() => {
+              setQuestModal({ open: true, editing: actionSheet.quest });
+            }}
+            onMoveUp={() => {
+              if (!actionSheet.isArchived) {
+                handleMoveUp(actionSheet.quest);
+              }
+            }}
+            onMoveDown={() => {
+              if (!actionSheet.isArchived) {
+                handleMoveDown(actionSheet.quest);
+              }
+            }}
+            onDelete={() => {
+              handleDelete(actionSheet.quest);
+            }}
+          />
+        )}
+      </Suspense>
 
       <SystemToast event={game.pendingEvents[0] ?? null} onDismiss={game.popEvent} />
       {/* Every modal below is rendered conditionally (`{open && ...}`) AND is
