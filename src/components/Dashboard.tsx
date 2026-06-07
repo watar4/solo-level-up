@@ -293,7 +293,16 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
 
   return (
     <div className="min-h-dvh px-4 py-6 pb-28 md:py-10 md:pb-28">
-      <div className="mx-auto max-w-5xl">
+      {/* Keyboard skip-link: hidden until focused, then sits above every layer
+          (TabBar z-40, modals z-50) so a keyboard user can jump past the header
+          straight to the content. */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[60] focus:rounded-none focus:border focus:border-sys-gold focus:bg-sys-bg focus:px-4 focus:py-2 focus:text-sm focus:font-bold focus:text-sys-gold"
+      >
+        メインへスキップ
+      </a>
+      <div id="main-content" tabIndex={-1} className="mx-auto max-w-5xl outline-none">
         <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="sys-title">Daily System</p>
