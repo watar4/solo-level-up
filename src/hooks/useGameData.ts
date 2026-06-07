@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { User } from 'firebase/auth';
 import {
   drainWeightInbox,
@@ -15,6 +15,8 @@ import {
   deleteCompletions,
   deleteAllByUid,
   addShadow,
+  setFocusGate,
+  deleteFocusGate,
 } from '../lib/firestore';
 import {
   buildMasterCharacter,
@@ -90,6 +92,9 @@ export interface GameData {
   // Grant the once-daily "hit your nutrition goal" EXP. No-ops (returns false)
   // if already granted for `dateKey`. Returns true when EXP was awarded.
   awardNutritionExp: (amount: number, dateKey: string) => Promise<boolean>;
+  // Enable/disable the iOS focus gate. Pass a fresh secret to enable (also
+  // seeds the public gate doc), or null to disable (removes the gate doc).
+  setGateSecret: (secret: string | null) => Promise<void>;
   resetAccount: () => Promise<void>;
   // Master-only: overwrite the current character + grant 5 legendary
   // shadows. Visible/usable in the UI only for emails in MASTER_EMAILS.
@@ -216,6 +221,8 @@ export function useGameData(user: User | null): GameData {
   const [needsCharacter, setNeedsCharacter] = useState(false);
   const [pendingEvents, setPendingEvents] = useState<SystemEvent[]>([]);
   const [busyQuestId, setBusyQuestId] = useState<string | null>(null);
+  // Last YYYY-MM-DD we published "gate open" for, to avoid redundant writes.
+  const gateWriteRef = useRef<string | null>(null);
 
   const enqueue = useCallback((events: SystemEvent[]) => {
     if (events.length) setPendingEvents((prev) => [...prev, ...events]);
@@ -270,6 +277,23 @@ export function useGameData(user: User | null): GameData {
     if (!user) return;
     return subscribeQuests(user.uid, setQuests);
   }, [user]);
+
+  // Publish the focus-gate "open today" state whenever a quest is completed
+  // today. The iOS automation polls the public gate doc; writing today's date
+  // unlocks it. We only write once per day (gateWriteRef guard) and never
+  // re-lock here — the gate naturally re-locks at midnight because the stored
+  // date no longer equals the new day.
+  useEffect(() => {
+    if (!user || !character?.gateSecret) return;
+    const today = todayKey();
+    const anyDoneToday = quests.some(isQuestDoneToday);
+    if (anyDoneToday && gateWriteRef.current !== today) {
+      gateWriteRef.current = today;
+      setFocusGate(character.gateSecret, user.uid, today).catch((err) =>
+        console.error('[gate] publish failed', err)
+      );
+    }
+  }, [user, character?.gateSecret, quests]);
 
   // Drain the iOS-Shortcut weight inbox on sign-in. Each row in
   // `weightInbox` for this uid is converted into a real `weightEntries`
@@ -895,6 +919,30 @@ export function useGameData(user: User | null): GameData {
     [user, character, enqueue]
   );
 
+  // Enable the focus gate with a fresh secret (seeds the public gate doc with
+  // today's state) or disable it (null → clear the field + delete the doc).
+  const setGateSecret = useCallback(
+    async (secret: string | null): Promise<void> => {
+      if (!user || !character) return;
+      const prev = character.gateSecret;
+      await updateCharacter(user.uid, {
+        gateSecret: (secret === null ? null : secret) as string | undefined,
+      });
+      setCharacter({ ...character, gateSecret: secret ?? undefined });
+      if (secret) {
+        const today = todayKey();
+        const anyDoneToday = quests.some(isQuestDoneToday);
+        gateWriteRef.current = anyDoneToday ? today : null;
+        await setFocusGate(secret, user.uid, anyDoneToday ? today : '');
+      } else if (prev) {
+        await deleteFocusGate(prev).catch((err) =>
+          console.error('[gate] delete failed', err)
+        );
+      }
+    },
+    [user, character, quests]
+  );
+
   const popEvent = useCallback(() => {
     setPendingEvents((prev) => prev.slice(1));
   }, []);
@@ -924,6 +972,11 @@ export function useGameData(user: User | null): GameData {
       deleteAllByUid('bossAttempts', uid),
       deleteAllByUid('weightInbox', uid),
     ]);
+    // The focus-gate doc is keyed by its secret (not listable by uid), so it
+    // can't go through deleteAllByUid — remove it directly if one exists.
+    if (character?.gateSecret) {
+      await deleteFocusGate(character.gateSecret).catch(() => {});
+    }
     // Delete the character doc itself
     await deleteCharacter(uid);
 
@@ -931,7 +984,7 @@ export function useGameData(user: User | null): GameData {
     setQuests([]);
     setNeedsCharacter(true);
     setPendingEvents([]);
-  }, [user, quests]);
+  }, [user, quests, character]);
 
   return {
     character,
@@ -956,6 +1009,7 @@ export function useGameData(user: User | null): GameData {
     setNutritionConfig,
     setNutritionTarget,
     awardNutritionExp,
+    setGateSecret,
     resetAccount,
     enqueueEvent,
     awardExp,

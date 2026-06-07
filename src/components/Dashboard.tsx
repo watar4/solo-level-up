@@ -36,6 +36,7 @@ const BattleSkillsPanel  = lazy(() => import('./BattleSkillsPanel').then((m) => 
 const AppearanceEditor   = lazy(() => import('./AppearanceEditor').then((m) => ({ default: m.AppearanceEditor })));
 const InventoryPanel     = lazy(() => import('./InventoryPanel').then((m) => ({ default: m.InventoryPanel })));
 const ApiKeysPanel       = lazy(() => import('./ApiKeysPanel').then((m) => ({ default: m.ApiKeysPanel })));
+const FocusGatePanel     = lazy(() => import('./FocusGatePanel').then((m) => ({ default: m.FocusGatePanel })));
 const MealPanel          = lazy(() => import('./MealPanel').then((m) => ({ default: m.MealPanel })));
 import { TabBar, type DashboardTab } from './TabBar';
 import type { LucideIcon } from 'lucide-react';
@@ -56,6 +57,7 @@ import {
   Crown,
   History,
   KeyRound,
+  Lock,
   LogOut,
   Palette,
   Plus,
@@ -135,6 +137,7 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
   const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [apiKeysOpen, setApiKeysOpen] = useState(false);
+  const [focusGateOpen, setFocusGateOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [actionSheet, setActionSheet] = useState<ActionSheetState | null>(null);
   // Active bottom-nav tab. Most feature panels stay as modals; the tab screens
@@ -558,6 +561,12 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
                   onClick={() => setApiKeysOpen(true)}
                 />
                 <NavTile
+                  Icon={Lock}
+                  label="集中ゲート"
+                  sublabel="quest-locked apps"
+                  onClick={() => setFocusGateOpen(true)}
+                />
+                <NavTile
                   Icon={Palette}
                   label="外見編集"
                   sublabel="appearance"
@@ -748,6 +757,15 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
             open={apiKeysOpen}
             uid={user.uid}
             onClose={() => setApiKeysOpen(false)}
+          />
+        )}
+        {focusGateOpen && (
+          <FocusGatePanel
+            open={focusGateOpen}
+            gateSecret={character.gateSecret}
+            unlockedToday={game.quests.some(isQuestDoneToday)}
+            onSetGateSecret={game.setGateSecret}
+            onClose={() => setFocusGateOpen(false)}
           />
         )}
         {resetOpen && (

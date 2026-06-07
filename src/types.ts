@@ -70,6 +70,11 @@ export interface Character {
   dietType?: DietType;               // PFC split preset
   nutritionTarget?: NutritionTarget; // manual override; when set, used as-is instead of the auto value
   lastNutritionRewardDate?: string;  // YYYY-MM-DD guard so the meal EXP is granted at most once/day
+  // ----- focus gate (iOS Shortcut soft-block) -----
+  // Random secret that is also the id of the public `gates/{secret}` doc an
+  // iOS automation polls. Lets a Shortcut read "did I clear a quest today?"
+  // without Firebase auth. Undefined until the user enables the focus gate.
+  gateSecret?: string;
 }
 
 export type QuestType = 'daily' | 'weekly' | 'one-time';

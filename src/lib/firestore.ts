@@ -486,6 +486,29 @@ export async function deleteApiKey(secret: string): Promise<void> {
   await deleteDoc(doc(requireDb(), 'apiKeys', secret));
 }
 
+// --- Focus gate (iOS Shortcut soft-block) ------------------------------
+
+// Publishes the "is the gate open today?" state to a publicly-readable,
+// secret-id'd doc so an iOS automation can poll it without Firebase auth.
+// `unlockedDate` is the YYYY-MM-DD on which a quest was last completed; the
+// Shortcut compares it to today. Document id IS the secret (same model as
+// apiKeys), so only someone holding the unguessable secret can read it.
+export async function setFocusGate(
+  secret: string,
+  uid: string,
+  unlockedDate: string
+): Promise<void> {
+  await setDoc(
+    doc(requireDb(), 'gates', secret),
+    { uid, unlockedDate, updatedAt: Date.now() },
+    { merge: true }
+  );
+}
+
+export async function deleteFocusGate(secret: string): Promise<void> {
+  await deleteDoc(doc(requireDb(), 'gates', secret));
+}
+
 // A Shortcut may send recordedAt as a Firestore `timestampValue` (read back as
 // a Timestamp), an ISO `stringValue`, or epoch millis. Normalise all of them to
 // a YYYY-MM-DD key; fall back to today on anything unparseable so one bad row

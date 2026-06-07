@@ -102,6 +102,18 @@ service cloud.firestore {
       allow update:       if false;
     }
 
+    // Focus gate: a publicly-readable "is the gate open today?" doc that an
+    // iOS automation polls (no Firebase auth available in a Shortcut). The
+    // document id IS an unguessable secret, so `get` is public but `list` is
+    // forbidden (you can't enumerate gates without knowing the secret). Only
+    // the authenticated owner may write, and only with their own uid.
+    match /gates/{secret} {
+      allow get:           if true;
+      allow list:          if false;
+      allow create, update: if request.auth != null && request.resource.data.uid == request.auth.uid;
+      allow delete:        if request.auth != null && resource.data.uid == request.auth.uid;
+    }
+
     // Inbox for body-weight readings posted from iOS Shortcuts / external
     // automation. Anonymous create is allowed *only* when:
     //   1. the payload carries a `secret` field
