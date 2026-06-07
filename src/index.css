@@ -8,6 +8,13 @@
   #root {
     height: 100%;
   }
+  html {
+    /* Mobile / installed-PWA polish: drop the grey tap-flash on iOS Safari,
+       stop the body rubber-banding past the dark background, and keep the
+       browser from over-scrolling the fixed gradient. */
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior-y: none;
+  }
   body {
     @apply bg-sys-bg text-sys-text font-sans antialiased;
     background-image:
@@ -69,6 +76,8 @@
   .sys-button {
     @apply relative inline-flex items-center justify-center gap-2 px-4 py-2 font-bold tracking-wider uppercase text-sm;
     color: #c2ecff;
+    user-select: none;
+    -webkit-user-select: none;
     background: linear-gradient(180deg, rgba(0, 212, 255, 0.18), rgba(0, 100, 200, 0.12));
     border: 1px solid rgba(95, 201, 255, 0.6);
     box-shadow:
@@ -188,4 +197,10 @@
     transform: none !important;
     filter: none !important;
   }
+}
+
+/* Stable digit widths so EXP / level / score counters don't jitter sideways
+   as the numbers tick (the theme leans on JetBrains Mono for all readouts). */
+.font-mono {
+  font-variant-numeric: tabular-nums;
 }

@@ -292,7 +292,7 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
   const handleDragCancel = () => setDraggingId(null);
 
   return (
-    <div className="min-h-screen px-4 py-6 pb-28 md:py-10 md:pb-28">
+    <div className="min-h-dvh px-4 py-6 pb-28 md:py-10 md:pb-28">
       <div className="mx-auto max-w-5xl">
         <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div>

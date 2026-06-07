@@ -36,7 +36,7 @@ export function TabBar({ active, onChange }: Props) {
               type="button"
               onClick={() => onChange(id)}
               aria-current={isActive ? 'page' : undefined}
-              className={`flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[10px] font-bold uppercase tracking-wider transition ${
+              className={`flex flex-1 select-none flex-col items-center gap-0.5 py-2.5 text-[10px] font-bold uppercase tracking-wider transition ${
                 isActive ? 'text-sys-accent' : 'text-sys-muted hover:text-sys-text'
               }`}
             >
