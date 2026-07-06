@@ -896,131 +896,197 @@ export function DailyBossPanel({
                 </div>
               </div>
 
-              {/* Boss banner */}
-              <div className="relative border border-sys-border/40 bg-black/40 px-4 py-3">
-                <div className="flex items-start gap-3">
-                  <div className="shrink-0 border border-sys-border/40 bg-black/60 p-1">
-                    <PixelArt
-                      layers={[{ grid: bossSprite.grid, palette: bossSprite.palette }]}
-                      pixelSize={5}
-                      ariaLabel={`ボス ${boss.name}`}
-                    />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[10px] uppercase tracking-widest text-sys-muted">
-                      本日のボス
+              {/* Battle arena — the boss holds center stage */}
+              <div className="battle-arena px-4 pt-3 pb-9">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[9px] uppercase tracking-widest text-sys-muted">
+                      Floor {floor} Boss
                     </p>
-                    <p className="mt-0.5 text-lg font-black tracking-wider text-sys-text">
+                    <p className="truncate text-base font-black tracking-wider text-sys-text">
                       {boss.name}
                     </p>
-                    <p className="mt-1 text-xs text-sys-muted">{boss.flavor}</p>
-                    <p className="mt-1 text-[10px] uppercase tracking-widest font-mono">
+                    <p className="mt-0.5 font-mono text-[9px] uppercase tracking-widest">
                       <span className="text-sys-gold">弱点 {boss.weak}</span>
                       <span className="text-sys-muted"> / </span>
                       <span className="text-sys-danger">耐性 {boss.resist}</span>
                     </p>
                   </div>
+                  <div className="w-36 shrink-0 space-y-1 sm:w-44">
+                    <HpBar
+                      label="HP"
+                      icon="enemy"
+                      value={bossHp}
+                      max={maxBossHp}
+                      pct={bossHpPct}
+                      color="danger"
+                    />
+                    <AtbBar pct={bossAtbPct} side="boss" />
+                  </div>
                 </div>
 
-                {/* Boss HP + ATB */}
-                <div className="mt-3 space-y-1.5">
-                  <HpBar
-                    label="HP"
-                    icon="enemy"
-                    value={bossHp}
-                    max={maxBossHp}
-                    pct={bossHpPct}
-                    color="danger"
-                  />
-                  <AtbBar pct={bossAtbPct} side="boss" />
+                {/* Sprite: idle breathing + hit shake (replayed via key). */}
+                <div className="mt-1 flex justify-center">
+                  <motion.div
+                    key={`boss-shake-${damageBurst?.target === 'boss' ? damageBurst.key : 'idle'}`}
+                    animate={
+                      damageBurst?.target === 'boss'
+                        ? { x: [0, -9, 9, -5, 5, -2, 0] }
+                        : { x: 0 }
+                    }
+                    transition={{ duration: 0.4 }}
+                  >
+                    <motion.div
+                      animate={{ y: [0, -5, 0] }}
+                      transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
+                    >
+                      <PixelArt
+                        layers={[{ grid: bossSprite.grid, palette: bossSprite.palette }]}
+                        pixelSize={7}
+                        ariaLabel={`ボス ${boss.name}`}
+                      />
+                    </motion.div>
+                  </motion.div>
                 </div>
 
+                {phase === 'ready' && (
+                  <p className="mt-2 text-center text-xs text-sys-muted">{boss.flavor}</p>
+                )}
+
+                {/* Damage numbers float up from the sprite */}
                 <AnimatePresence>
                   {damageBurst && damageBurst.target === 'boss' && (
                     <motion.div
                       key={damageBurst.key}
-                      initial={{ opacity: 0, y: 0, scale: 0.7 }}
-                      animate={{ opacity: 1, y: -20, scale: 1.2 }}
-                      exit={{ opacity: 0, y: -40 }}
+                      initial={{ opacity: 0, y: 0, scale: 0.6 }}
+                      animate={{ opacity: 1, y: -34, scale: 1.25 }}
+                      exit={{ opacity: 0, y: -55 }}
                       transition={{ duration: 0.6 }}
                       onAnimationComplete={() => setDamageBurst(null)}
-                      className={`pointer-events-none absolute left-20 top-3 font-black ${
+                      className={`pointer-events-none absolute left-1/2 top-1/3 -translate-x-1/2 font-display font-black ${
                         damageBurst.tone === 'crit'
-                          ? 'text-amber-300 drop-shadow-[0_0_10px_rgba(255,215,0,0.8)] text-3xl'
+                          ? 'text-amber-300 drop-shadow-[0_0_12px_rgba(255,215,0,0.9)] text-4xl'
                           : damageBurst.tone === 'weak'
-                          ? 'text-sys-gold text-2xl'
+                          ? 'text-sys-gold text-3xl'
                           : damageBurst.tone === 'resist'
                           ? 'text-sys-muted text-xl'
-                          : 'text-sys-accent text-2xl'
+                          : 'text-sys-accent text-3xl'
                       }`}
                     >
                       -{damageBurst.value}
                     </motion.div>
                   )}
                 </AnimatePresence>
+
+                {/* Victory / defeat stamp over the arena */}
+                <AnimatePresence>
+                  {phase === 'won' && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 2.2 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+                      className="pointer-events-none absolute inset-0 flex items-center justify-center"
+                    >
+                      <p className="gold-text -rotate-6 font-display text-5xl font-black tracking-widest drop-shadow-[0_0_24px_rgba(255,200,0,0.5)]">
+                        VICTORY
+                      </p>
+                    </motion.div>
+                  )}
+                  {phase === 'lost' && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -30 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.5 }}
+                      className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40"
+                    >
+                      <p className="font-display text-4xl font-black tracking-widest text-sys-danger drop-shadow-[0_0_18px_rgba(255,71,87,0.6)]">
+                        DEFEAT
+                      </p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
 
-              {/* Player banner */}
-              <div className="relative border border-sys-border/40 bg-black/40 px-4 py-3">
-                <div className="flex items-start gap-3">
-                  <div className="shrink-0 border border-sys-border/40 bg-black/60 p-1">
+              {/* Player HUD strip — compact, thumb-zone friendly */}
+              <motion.div
+                key={`player-shake-${
+                  damageBurst?.target === 'player' &&
+                  damageBurst.tone !== 'heal' &&
+                  damageBurst.tone !== 'dodge'
+                    ? damageBurst.key
+                    : 'idle'
+                }`}
+                animate={
+                  damageBurst?.target === 'player' &&
+                  damageBurst.tone !== 'heal' &&
+                  damageBurst.tone !== 'dodge'
+                    ? { x: [0, -7, 7, -4, 4, 0] }
+                    : { x: 0 }
+                }
+                transition={{ duration: 0.35 }}
+                className="relative border border-sys-border/40 bg-black/40 px-3 py-2"
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className="shrink-0 border border-sys-border/40 bg-black/60 p-0.5">
                     <PixelArt
                       layers={[
                         { grid: playerSprite.grid, palette: playerSprite.palette },
                       ]}
-                      pixelSize={5}
+                      pixelSize={3}
                       ariaLabel={`プレイヤー ${character.name}`}
                     />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-[10px] uppercase tracking-widest text-sys-muted">
-                      ハンター
-                    </p>
-                    <p className="mt-0.5 text-lg font-black tracking-wider text-sys-text">
-                      {character.name}
-                    </p>
-                    <p className="mt-1 text-[10px] text-sys-muted">
-                      Lv.{character.level} · 行動 {turn} 回
-                    </p>
-                    <div className="mt-2 grid grid-cols-5 gap-1 text-center">
-                      {(Object.keys(effective) as StatKey[]).map((k) => (
-                        <div key={k} className="border border-sys-border/30 px-1 py-0.5">
-                          <div className="text-[8px] uppercase tracking-widest text-sys-muted">
-                            {STAT_LABELS[k].en}
-                          </div>
-                          <div className="font-mono text-[10px] text-sys-text">
-                            {effective[k]}
-                          </div>
-                        </div>
-                      ))}
+                    <div className="flex items-baseline justify-between gap-2">
+                      <p className="truncate text-xs font-black tracking-wider text-sys-text">
+                        {character.name}
+                      </p>
+                      <span className="shrink-0 font-mono text-[9px] text-sys-muted">
+                        Lv.{character.level} · 行動 {turn} 回
+                      </span>
+                    </div>
+                    <div className="mt-1 space-y-1">
+                      <HpBar
+                        label="HP"
+                        icon="player"
+                        value={playerHp}
+                        max={maxPlayerHp}
+                        pct={playerHpPct}
+                        color="ok"
+                      />
+                      <AtbBar pct={playerAtbPct} side="player" />
                     </div>
                   </div>
                 </div>
 
-                <div className="mt-3 space-y-1.5">
-                  <HpBar
-                    label="HP"
-                    icon="player"
-                    value={playerHp}
-                    max={maxPlayerHp}
-                    pct={playerHpPct}
-                    color="ok"
-                  />
-                  <AtbBar pct={playerAtbPct} side="player" />
-                </div>
+                {/* Effective stats — pre-battle briefing only, saves height in combat */}
+                {phase === 'ready' && (
+                  <div className="mt-2 grid grid-cols-5 gap-1 text-center">
+                    {(Object.keys(effective) as StatKey[]).map((k) => (
+                      <div key={k} className="border border-sys-border/30 px-1 py-0.5">
+                        <div className="text-[8px] uppercase tracking-widest text-sys-muted">
+                          {STAT_LABELS[k].en}
+                        </div>
+                        <div className="font-mono text-[10px] text-sys-text">
+                          {effective[k]}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 <AnimatePresence>
                   {damageBurst && damageBurst.target === 'player' && (
                     <motion.div
                       key={damageBurst.key}
                       initial={{ opacity: 0, y: 0, scale: 0.7 }}
-                      animate={{ opacity: 1, y: -20, scale: 1.2 }}
-                      exit={{ opacity: 0, y: -40 }}
+                      animate={{ opacity: 1, y: -20, scale: 1.15 }}
+                      exit={{ opacity: 0, y: -38 }}
                       transition={{ duration: 0.6 }}
                       onAnimationComplete={() => setDamageBurst(null)}
-                      className={`pointer-events-none absolute left-20 top-3 font-black ${
+                      className={`pointer-events-none absolute left-1/2 top-0 -translate-x-1/2 font-display font-black ${
                         damageBurst.tone === 'dodge'
-                          ? 'text-sys-accent text-xl'
+                          ? 'text-sys-accent text-lg'
                           : damageBurst.tone === 'heal'
                           ? 'text-sys-ok drop-shadow-[0_0_8px_rgba(34,197,94,0.7)] text-2xl'
                           : damageBurst.tone === 'crit'
@@ -1036,7 +1102,7 @@ export function DailyBossPanel({
                     </motion.div>
                   )}
                 </AnimatePresence>
-              </div>
+              </motion.div>
 
               {/* Companion shadows row */}
               {equippedShadows.length > 0 && (
@@ -1101,7 +1167,7 @@ export function DailyBossPanel({
                             type="button"
                             onClick={() => performSkill(skill)}
                             disabled={!canAct}
-                            className="relative flex flex-col items-stretch border px-2 py-2 text-left transition active:translate-y-px disabled:opacity-50 border-sys-ok/50 bg-sys-ok/5 hover:bg-sys-ok/15"
+                            className="relative flex flex-col items-stretch border px-2 py-2.5 text-left transition active:translate-y-px active:scale-[0.97] disabled:opacity-50 border-sys-ok/50 bg-sys-ok/5 hover:bg-sys-ok/15"
                           >
                             <span className="text-[10px] uppercase tracking-widest text-sys-muted">
                               {skill.label}
@@ -1125,7 +1191,7 @@ export function DailyBossPanel({
                           type="button"
                           onClick={() => performSkill(skill)}
                           disabled={!canAct}
-                          className={`relative flex flex-col items-stretch border px-2 py-2 text-left transition active:translate-y-px disabled:opacity-50 ${
+                          className={`relative flex flex-col items-stretch border px-2 py-2.5 text-left transition active:translate-y-px active:scale-[0.97] disabled:opacity-50 ${
                             isWeak
                               ? 'border-sys-gold/60 bg-sys-gold/5 hover:bg-sys-gold/15'
                               : isResist

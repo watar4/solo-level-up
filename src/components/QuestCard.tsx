@@ -1,5 +1,8 @@
+import { useEffect, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import type { Quest } from '../types';
 import { DIFFICULTY_EXP, STAT_LABELS } from '../types';
+import { QUEST_GOLD } from '../lib/economy';
 import {
   daysUntilWeekReset,
   effectiveStreak,
@@ -33,8 +36,8 @@ const DIFFICULTY_COLOR: Record<string, string> = {
   D: 'text-emerald-300 border-emerald-400/60',
   C: 'text-cyan-300 border-cyan-400/60',
   B: 'text-blue-300 border-blue-400/60',
-  A: 'text-purple-300 border-purple-400/60',
-  S: 'text-amber-300 border-amber-400/60',
+  A: 'text-purple-300 border-purple-400/60 drop-shadow-[0_0_4px_rgba(192,132,252,0.5)]',
+  S: 'text-amber-300 border-amber-400/60 drop-shadow-[0_0_5px_rgba(252,211,77,0.6)]',
 };
 
 const TYPE_LABEL: Record<Quest['type'], string> = {
@@ -68,6 +71,25 @@ export function QuestCard({
   const weeklyCount =
     quest.type === 'weekly' ? weeklyCompletionCount(quest.completedDates) : 0;
 
+  // Completion "juice": when doneToday flips false→true, fire a one-shot
+  // ring burst + a rising "+EXP/+G" flyup over the checkbox. Keyed by a
+  // counter so re-completing after an uncheck replays the effect.
+  const prevDone = useRef(doneToday);
+  const [burstKey, setBurstKey] = useState(0);
+  useEffect(() => {
+    if (!prevDone.current && doneToday) setBurstKey((k) => k + 1);
+    prevDone.current = doneToday;
+  }, [doneToday]);
+
+  const handleToggle = () => {
+    // Tactile blip on devices that support it (Android). Fires on the
+    // press, not the Firestore ack, so it feels instant.
+    if (!doneToday && typeof navigator !== 'undefined' && navigator.vibrate) {
+      navigator.vibrate(15);
+    }
+    onToggle();
+  };
+
   return (
     <div
       className={`group relative border bg-black/40 px-4 py-3 transition ${
@@ -77,20 +99,56 @@ export function QuestCard({
       }`}
     >
       <div className="flex items-start gap-3">
-        <button
-          type="button"
-          onClick={onToggle}
-          disabled={busy}
-          aria-label={doneToday ? 'チェックを外す' : 'クエストを完了'}
-          title={doneToday ? 'もう一度押すと未達成に戻ります' : 'クエストを完了する'}
-          className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center border transition ${
-            doneToday
-              ? 'border-sys-ok bg-sys-ok/30 text-sys-ok hover:bg-sys-ok/10 hover:text-sys-ok/70'
-              : 'border-sys-border/60 hover:border-sys-accent hover:bg-sys-accent/15'
-          } ${busy ? 'opacity-50 cursor-wait' : ''}`}
-        >
-          {doneToday && <Check className="h-4 w-4" />}
-        </button>
+        <div className="relative shrink-0">
+          <motion.button
+            type="button"
+            onClick={handleToggle}
+            disabled={busy}
+            whileTap={{ scale: 0.8 }}
+            aria-label={doneToday ? 'チェックを外す' : 'クエストを完了'}
+            title={doneToday ? 'もう一度押すと未達成に戻ります' : 'クエストを完了する'}
+            className={`mt-0.5 flex h-8 w-8 items-center justify-center border transition ${
+              doneToday
+                ? 'border-sys-ok bg-sys-ok/30 text-sys-ok hover:bg-sys-ok/10 hover:text-sys-ok/70'
+                : 'border-sys-border/60 hover:border-sys-accent hover:bg-sys-accent/15'
+            } ${busy ? 'opacity-50 cursor-wait' : ''}`}
+          >
+            {doneToday && (
+              <motion.span
+                key={burstKey}
+                initial={{ scale: 0, rotate: -30 }}
+                animate={{ scale: 1, rotate: 0 }}
+                transition={{ type: 'spring', stiffness: 500, damping: 18 }}
+              >
+                <Check className="h-4 w-4" />
+              </motion.span>
+            )}
+          </motion.button>
+
+          {/* One-shot completion burst: expanding ring + reward flyup. */}
+          <AnimatePresence>
+            {burstKey > 0 && doneToday && (
+              <motion.span
+                key={`ring-${burstKey}`}
+                initial={{ opacity: 0.9, scale: 0.4 }}
+                animate={{ opacity: 0, scale: 2.4 }}
+                transition={{ duration: 0.55, ease: 'easeOut' }}
+                className="pointer-events-none absolute inset-0 mt-0.5 border-2 border-sys-ok"
+              />
+            )}
+            {burstKey > 0 && doneToday && (
+              <motion.span
+                key={`fly-${burstKey}`}
+                initial={{ opacity: 0, y: 4, scale: 0.7 }}
+                animate={{ opacity: [0, 1, 1, 0], y: -30, scale: 1 }}
+                transition={{ duration: 0.9, ease: 'easeOut' }}
+                className="pointer-events-none absolute left-1/2 top-0 z-10 -translate-x-1/2 whitespace-nowrap font-display text-[11px] font-bold text-sys-accent drop-shadow-[0_0_6px_rgba(0,212,255,0.8)]"
+              >
+                +{expReward} EXP <span className="text-sys-gold">+{QUEST_GOLD[quest.difficulty]}G</span>
+              </motion.span>
+            )}
+          </AnimatePresence>
+        </div>
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">

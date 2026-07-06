@@ -167,7 +167,7 @@
       inset 0 1px 0 rgba(180, 230, 255, 0.3);
   }
   .sys-button:active {
-    transform: translateY(1px);
+    transform: translateY(1px) scale(0.97);
   }
   .sys-button:disabled {
     opacity: 0.4;
@@ -294,6 +294,32 @@
   }
   @keyframes dq-blink {
     to { visibility: hidden; }
+  }
+
+  /* ── Battle arena ──────────────────────────────────────────────────────
+     The boss's stage: a vignetted gradient chamber with a glowing ground
+     ellipse under the sprite so the fight reads as a place, not a list. */
+  .battle-arena {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid rgba(95, 201, 255, 0.35);
+    background:
+      radial-gradient(ellipse 70% 45% at 50% 78%, rgba(0, 212, 255, 0.10), transparent 70%),
+      radial-gradient(ellipse 90% 70% at 50% 0%, rgba(124, 58, 237, 0.14), transparent 65%),
+      linear-gradient(180deg, #060b18 0%, #04070f 100%);
+  }
+  .battle-arena::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    bottom: 12%;
+    width: 140px;
+    height: 26px;
+    transform: translateX(-50%);
+    border-radius: 9999px;
+    background: radial-gradient(ellipse at center, rgba(0, 212, 255, 0.28), transparent 70%);
+    filter: blur(4px);
+    pointer-events: none;
   }
 
   /* ── Rarity identity (shadows / weapons / drops) ─────────────────────── */

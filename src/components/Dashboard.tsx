@@ -42,6 +42,8 @@ const ShopPanel          = lazy(() => import('./ShopPanel').then((m) => ({ defau
 const DexPanel           = lazy(() => import('./DexPanel').then((m) => ({ default: m.DexPanel })));
 const SavingsPanel       = lazy(() => import('./SavingsPanel').then((m) => ({ default: m.SavingsPanel })));
 import { TabBar, type DashboardTab } from './TabBar';
+import { PixelArt } from './PixelArt';
+import { motion } from 'framer-motion';
 import type { LucideIcon } from 'lucide-react';
 import { useShadows } from '../hooks/useShadows';
 import { useItems } from '../hooks/useItems';
@@ -49,7 +51,9 @@ import { useSavings } from '../hooks/useSavings';
 import { rollShadowDrop, RARITY_LABEL } from '../lib/shadows';
 import { weaponStatBonus } from '../lib/items';
 import { walletGold } from '../lib/economy';
-import type { StatKey } from '../types';
+import { expForLevel, rankForLevel } from '../lib/leveling';
+import { DEFAULT_APPEARANCE, renderClassSprite } from '../lib/playerSprites';
+import type { Rank, StatKey } from '../types';
 import { isQuestDoneToday, useGameData } from '../hooks/useGameData';
 import { createQuest } from '../lib/firestore';
 import type { Character, Quest } from '../types';
@@ -92,6 +96,17 @@ interface Props {
 // naturally on screen; beyond that you advance the viewport one quest at a time.
 const VIEWPORT_SIZE = 5;
 
+// Rank identity colors for the HUD badge (E→SS).
+const RANK_BADGE: Record<Rank, string> = {
+  E: 'text-rank-e border-rank-e/70',
+  D: 'text-rank-d border-rank-d/70',
+  C: 'text-rank-c border-rank-c/70',
+  B: 'text-rank-b border-rank-b/70',
+  A: 'text-rank-a border-rank-a/70 drop-shadow-[0_0_4px_rgba(168,85,247,0.6)]',
+  S: 'text-rank-s border-rank-s/70 drop-shadow-[0_0_4px_rgba(255,215,0,0.6)]',
+  SS: 'text-rank-ss border-rank-ss/70 drop-shadow-[0_0_5px_rgba(255,71,87,0.7)]',
+};
+
 // A large tile button used on the Combat / Records / Menu tab screens. The old
 // header crammed ~11 of these into one cramped row; the bottom-tab layout gives
 // each category its own screen so the tiles can breathe.
@@ -118,7 +133,7 @@ function NavTile({
     <button
       type="button"
       onClick={onClick}
-      className={`flex flex-col items-center justify-center gap-2 border border-sys-border/40 bg-black/30 px-4 py-6 text-center text-sys-text transition ${accentClass}`}
+      className={`flex flex-col items-center justify-center gap-2 border border-sys-border/40 bg-black/30 px-4 py-6 text-center text-sys-text transition active:scale-[0.96] ${accentClass}`}
     >
       <Icon className="h-7 w-7" />
       <span className="text-sm font-bold tracking-wide">{label}</span>
@@ -128,6 +143,85 @@ function NavTile({
         </span>
       )}
     </button>
+  );
+}
+
+// Persistent player HUD: avatar / rank / name / title / EXP bar / gold.
+// The single glanceable strip that makes every screen feel like a game.
+function HudBar({
+  character,
+  onAvatarTap,
+}: {
+  character: Character;
+  onAvatarTap: () => void;
+}) {
+  const rank = rankForLevel(character.level);
+  const need = expForLevel(character.level);
+  const expPct = Math.min(100, (character.exp / need) * 100);
+  const sprite = useMemo(() => {
+    const a = character.appearance ?? DEFAULT_APPEARANCE;
+    return renderClassSprite(a.hunterClass, a.primaryColor, a.accentColor);
+  }, [character.appearance]);
+
+  return (
+    <div className="sys-window px-3 py-2.5 sm:px-4">
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={onAvatarTap}
+          aria-label="ステータスを開く"
+          className="shrink-0 border border-sys-border/50 bg-black/60 p-1 transition active:scale-95 hover:border-sys-accent/70"
+        >
+          <PixelArt
+            layers={[{ grid: sprite.grid, palette: sprite.palette }]}
+            pixelSize={3}
+            ariaLabel={character.name}
+          />
+        </button>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline gap-1.5">
+            <span
+              className={`inline-block shrink-0 border bg-black/50 px-1.5 font-display text-[11px] font-bold ${RANK_BADGE[rank]}`}
+            >
+              {rank}
+            </span>
+            <p className="truncate text-sm font-black tracking-wider text-sys-text">
+              {character.name}
+            </p>
+            {character.title && (
+              <span className="hidden truncate text-[9px] text-sys-gold sm:inline">
+                「{character.title}」
+              </span>
+            )}
+          </div>
+          <div className="mt-1.5 flex items-center gap-2">
+            <span className="shrink-0 font-display text-[11px] font-bold text-sys-accent">
+              Lv{character.level}
+            </span>
+            <div className="sys-bar h-1.5 flex-1">
+              <div
+                className="sys-bar-fill bg-gradient-to-r from-sys-accent to-cyan-300"
+                style={{ width: `${expPct}%` }}
+              >
+                <span className="sys-bar-shine" />
+              </div>
+            </div>
+            <span className="shrink-0 font-mono text-[9px] text-sys-muted">
+              {character.exp}/{need}
+            </span>
+          </div>
+        </div>
+        <div className="shrink-0 text-right">
+          <p className="flex items-center justify-end gap-1">
+            <Coins className="h-3.5 w-3.5 text-sys-gold" />
+            <span className="gold-text text-base leading-none">
+              {walletGold(character).toLocaleString()}
+            </span>
+          </p>
+          <p className="mt-0.5 text-[8px] uppercase tracking-[0.2em] text-sys-muted">gold</p>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -319,29 +413,19 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
         メインへスキップ
       </a>
       <div id="main-content" tabIndex={-1} className="mx-auto max-w-5xl outline-none">
-        <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="sys-title">Daily System</p>
-            <h1 className="text-2xl font-black tracking-wider">
-              <span className="text-sys-accent drop-shadow-[0_0_6px_rgba(0,212,255,0.6)]">
-                SOLO
-              </span>{' '}
-              LEVEL UP
-            </h1>
-          </div>
-          <div className="text-right">
-            <p className="font-mono text-xs text-sys-muted">
-              Lv.<span className="text-sys-accent">{character.level}</span>
-              <span className="mx-1.5 text-sys-border/40">|</span>
-              <Coins className="inline h-3 w-3 align-[-1px] text-sys-gold" />{' '}
-              <span className="gold-text text-sm">{walletGold(character).toLocaleString()}</span>
-              <span className="text-sys-muted"> G</span>
-            </p>
-            <p className="text-[10px] uppercase tracking-widest text-sys-muted">
-              {character.name}
-            </p>
-          </div>
+        {/* ── Player HUD — always visible, glanceable, game-console style ── */}
+        <header className="mb-5">
+          <p className="sys-title mb-1.5 text-center sm:text-left">Solo Level Up System</p>
+          <HudBar character={character} onAvatarTap={() => setTab('status')} />
         </header>
+
+        {/* Tab content fades/slides in on switch — remount keyed by tab. */}
+        <motion.div
+          key={tab}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.22, ease: 'easeOut' }}
+        >
 
         {tab === 'quest' && (
         <div className="mx-auto max-w-xl space-y-6">
@@ -645,6 +729,7 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
             </SystemWindow>
           </div>
         )}
+        </motion.div>
 
         <footer className="mt-10 text-center text-[11px] text-sys-muted">
           Solo Level Up · made with Vite + Firebase ·{' '}
