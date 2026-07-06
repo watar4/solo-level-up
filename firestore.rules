@@ -92,6 +92,16 @@ service cloud.firestore {
       allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
     }
 
+    // Real-world savings / card-spending ledger rows (manual entry or CSV
+    // import). Same uid-scoped ownership pattern; updates forbidden — rows
+    // are immutable once written (delete + re-add to correct a mistake).
+    match /savingsEntries/{id} {
+      allow read:   if request.auth != null && resource.data.uid == request.auth.uid;
+      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
+      allow update: if false;
+      allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
+    }
+
     // Per-user API keys issued from the app UI for non-browser clients.
     // Document ID is the secret itself; this is intentional so weightInbox
     // rules can look up the key in O(1). Only the owner (authenticated) can

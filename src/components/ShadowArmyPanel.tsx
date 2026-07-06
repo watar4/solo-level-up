@@ -4,9 +4,17 @@ import { SystemWindow } from './SystemWindow';
 import {
   RARITY_COLOR,
   RARITY_LABEL,
-  SHADOW_COMBAT,
   SHADOW_EQUIP_LIMIT,
 } from '../lib/shadows';
+import {
+  nextEvolutionLevel,
+  shadowCombatPower,
+  shadowExp,
+  shadowExpForLevel,
+  shadowLevel,
+  stageDisplayName,
+  SHADOW_MAX_LEVEL,
+} from '../lib/shadowGrowth';
 import { STAT_LABELS } from '../types';
 import type { Shadow, ShadowRarity, StatKey } from '../types';
 
@@ -22,8 +30,8 @@ interface Props {
 const RARITY_ORDER: ShadowRarity[] = ['legendary', 'epic', 'rare', 'normal'];
 
 function combatLine(s: Shadow): string {
-  const c = SHADOW_COMBAT[s.rarity];
-  return `${s.stat}型 · ATK ${c.attack} · 速 ${c.atbSpeed}`;
+  const c = shadowCombatPower(s);
+  return `${s.stat}型 · ATK ${c.attack} · 速 ${c.atbSpeed.toFixed(1)}`;
 }
 
 export function ShadowArmyPanel({
@@ -114,7 +122,7 @@ export function ShadowArmyPanel({
               </p>
             </div>
             <p className="text-[10px] text-sys-muted/80">
-              装備した影はボス戦で各自の ATB が満ちる度に自動攻撃する。レアリティが高いほど ATB が早く溜まり、ダメージも大きい
+              装備した影はボス戦で各自の ATB が満ちる度に自動攻撃する。ボス勝利で EXP を獲得してレベルアップし、Lv10 で「覚醒」・Lv20 で「真」へ進化して大幅に強化される
             </p>
           </div>
 
@@ -165,6 +173,33 @@ export function ShadowArmyPanel({
   );
 }
 
+// Compact EXP progress toward the next shadow level, with the next
+// evolution gate called out when one is coming up.
+function ShadowExpBar({ shadow }: { shadow: Shadow }) {
+  const level = shadowLevel(shadow);
+  if (level >= SHADOW_MAX_LEVEL) {
+    return <p className="mt-1 font-mono text-[9px] text-sys-gold">MAX LEVEL</p>;
+  }
+  const exp = shadowExp(shadow);
+  const need = shadowExpForLevel(level);
+  const pct = Math.min(100, (exp / need) * 100);
+  const nextEvo = nextEvolutionLevel(level);
+  return (
+    <div className="mt-1">
+      <div className="h-1 w-full overflow-hidden border border-sys-border/30 bg-black/60">
+        <div
+          className="h-full bg-gradient-to-r from-purple-500 to-fuchsia-300"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <p className="mt-0.5 font-mono text-[9px] text-sys-muted">
+        EXP {exp}/{need}
+        {nextEvo !== null && ` · Lv${nextEvo} で進化`}
+      </p>
+    </div>
+  );
+}
+
 interface ShadowCardProps {
   shadow: Shadow;
   busy: boolean;
@@ -195,8 +230,13 @@ function ShadowCard({
       <div className="flex items-start gap-2">
         <span className="mt-0.5 text-lg">🌑</span>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-bold text-sys-text">{shadow.name}</p>
+          <p className="truncate text-sm font-bold text-sys-text">
+            {stageDisplayName(shadow.name, shadowLevel(shadow))}
+          </p>
           <div className="mt-0.5 flex items-baseline gap-2">
+            <span className="font-mono text-[10px] text-sys-gold">
+              Lv{shadowLevel(shadow)}
+            </span>
             <span className="text-[10px] uppercase tracking-widest text-sys-muted">
               {STAT_LABELS[stat].en}
             </span>
@@ -205,6 +245,7 @@ function ShadowCard({
               {combatLine(shadow)}
             </span>
           </div>
+          <ShadowExpBar shadow={shadow} />
         </div>
         <div className="flex flex-col items-end gap-1">
           {shadow.equipped ? (

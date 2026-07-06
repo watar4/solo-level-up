@@ -9,7 +9,17 @@ import {
   SHADOW_EQUIP_LIMIT,
   SHADOW_TEMPLATES,
 } from '../lib/shadows';
+import { applyShadowExp, shadowExpForBossWin } from '../lib/shadowGrowth';
 import type { Shadow, ShadowRarity } from '../types';
+
+// One equipped shadow's growth outcome after a boss win — the caller turns
+// notable ones (level-up / evolution) into SystemToasts.
+export interface ShadowGrowth {
+  shadow: Shadow;         // post-growth state
+  levelsGained: number;
+  evolved: boolean;
+  newStageName?: string;
+}
 
 export interface ShadowsData {
   shadows: Shadow[];
@@ -19,6 +29,9 @@ export interface ShadowsData {
   unequipShadow: (id: string) => Promise<void>;
   awardShadow: (templateId: string) => Promise<Shadow | null>;
   discardShadow: (id: string) => Promise<void>;
+  // Grant boss-victory EXP to every equipped shadow. Persists level/exp and
+  // returns each shadow's growth so the battle UI can toast level-ups.
+  gainShadowExpForWin: (floor: number) => Promise<ShadowGrowth[]>;
 }
 
 export function useShadows(uid: string | null): ShadowsData {
@@ -79,6 +92,27 @@ export function useShadows(uid: string | null): ShadowsData {
     [shadows]
   );
 
+  const gainShadowExpForWin = useCallback(
+    async (floor: number): Promise<ShadowGrowth[]> => {
+      const gain = shadowExpForBossWin(floor);
+      const growths: ShadowGrowth[] = [];
+      await Promise.all(
+        equippedShadows.map(async (s) => {
+          const result = applyShadowExp(s, gain);
+          growths.push({
+            shadow: { ...s, level: result.level, exp: result.exp },
+            levelsGained: result.levelsGained,
+            evolved: result.evolved,
+            newStageName: result.newStageName,
+          });
+          await updateShadow(s.id, { level: result.level, exp: result.exp });
+        })
+      );
+      return growths;
+    },
+    [equippedShadows]
+  );
+
   return {
     shadows,
     equippedShadows,
@@ -87,5 +121,6 @@ export function useShadows(uid: string | null): ShadowsData {
     unequipShadow,
     awardShadow,
     discardShadow,
+    gainShadowExpForWin,
   };
 }

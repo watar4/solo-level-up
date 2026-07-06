@@ -23,6 +23,7 @@ import type {
   MealEntry,
   MealPreset,
   Quest,
+  SavingsEntry,
   Shadow,
   StatKey,
   WeightEntry,
@@ -434,6 +435,45 @@ export async function updateItem(id: string, patch: Partial<Item>): Promise<void
 
 export async function deleteItem(id: string): Promise<void> {
   await deleteDoc(doc(requireDb(), 'items', id));
+}
+
+// --- Savings ledger (real-world money link) ------------------------------
+
+export function subscribeSavings(
+  uid: string,
+  onChange: (entries: SavingsEntry[]) => void,
+  onError?: (err: Error) => void
+): () => void {
+  const q = query(collection(requireDb(), 'savingsEntries'), where('uid', '==', uid));
+  return onSnapshot(
+    q,
+    (snap) => {
+      const entries: SavingsEntry[] = [];
+      snap.forEach((s) => {
+        const data = s.data() as Omit<SavingsEntry, 'id'>;
+        entries.push({ ...data, id: s.id });
+      });
+      // Newest first; tiebreak by createdAt so same-day rows keep import order.
+      entries.sort((a, b) => {
+        if (a.date !== b.date) return b.date.localeCompare(a.date);
+        return b.createdAt - a.createdAt;
+      });
+      onChange(entries);
+    },
+    (err) => {
+      console.error('[savings:subscribe] failed', err);
+      onError?.(err);
+    }
+  );
+}
+
+export async function addSavingsEntry(entry: Omit<SavingsEntry, 'id'>): Promise<string> {
+  const ref = await addDoc(collection(requireDb(), 'savingsEntries'), entry);
+  return ref.id;
+}
+
+export async function deleteSavingsEntry(id: string): Promise<void> {
+  await deleteDoc(doc(requireDb(), 'savingsEntries', id));
 }
 
 // --- API keys + weight inbox -------------------------------------------

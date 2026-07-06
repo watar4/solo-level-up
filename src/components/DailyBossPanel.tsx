@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { X, Swords, Heart, Zap, Sparkles } from 'lucide-react';
+import { X, Swords, Heart, Zap, Sparkles, FlaskConical, DoorOpen, Coins } from 'lucide-react';
 import { SystemWindow } from './SystemWindow';
 import { PixelArt } from './PixelArt';
 import {
@@ -34,14 +34,25 @@ import { addBossAttempt } from '../lib/firestore';
 import {
   RARITY_COLOR,
   RARITY_LABEL,
-  SHADOW_COMBAT,
   SHADOW_TEMPLATES,
 } from '../lib/shadows';
+import {
+  shadowCombatPower,
+  shadowLevel,
+  stageDisplayName,
+} from '../lib/shadowGrowth';
+import type { ShadowGrowth } from '../hooks/useShadows';
 import {
   rollChestWeapon,
   treasureChestChance,
   weaponBonusFor,
 } from '../lib/items';
+import {
+  CONSUMABLES,
+  bossGoldReward,
+  getConsumable,
+  type ConsumableTemplate,
+} from '../lib/economy';
 import type { Character, Shadow, ShadowRarity, StatKey } from '../types';
 import { STAT_LABELS } from '../types';
 import { todayKey } from '../lib/leveling';
@@ -63,7 +74,14 @@ interface Props {
     won: boolean;
     floor: number;
     extractedCount?: number;
+    gold?: number;
   }) => void;
+  // Boss purse — credits the gold wallet on victory.
+  onAwardGold: (amount: number) => Promise<void>;
+  // Consume one unit of a consumable (persists). False when none held.
+  onUseConsumable: (consumableId: string) => Promise<boolean>;
+  // Grant boss-victory EXP to equipped shadows; returns per-shadow growth.
+  onShadowGrowth: (floor: number) => Promise<ShadowGrowth[]>;
 }
 
 interface BattleLog {
@@ -94,6 +112,9 @@ export function DailyBossPanel({
   onAwardWeapon,
   onIncrementFloor,
   onEnqueueBossEvent,
+  onAwardGold,
+  onUseConsumable,
+  onShadowGrowth,
 }: Props) {
   const today = todayKey();
   // Furthest unexplored floor — anything ≤ this is selectable in the
@@ -180,10 +201,26 @@ export function DailyBossPanel({
   const [extractionResults, setExtractionResults] = useState<ExtractionResultUI[]>([]);
   const [extractionBusy, setExtractionBusy] = useState(false);
 
+  // ── Battle inventory (どうぐ) ──
+  // Local per-battle stock snapshot. Decremented instantly on use for a
+  // responsive UI; onUseConsumable persists the real count in the background.
+  const [itemStocks, setItemStocks] = useState<Record<string, number>>({});
+  // 力の結晶: multiplies the NEXT attack once, then clears.
+  const [attackBoost, setAttackBoost] = useState<number | null>(null);
+  // Victory purse + per-shadow growth, shown on the won screen.
+  const [goldEarned, setGoldEarned] = useState(0);
+  const [growthResults, setGrowthResults] = useState<ShadowGrowth[]>([]);
+
   // Stop the ATB ticker when we're not actively in a fight.
   const intervalRef = useRef<number | null>(null);
   const phaseRef = useRef<Phase>(phase);
   phaseRef.current = phase;
+
+  // Keep the DQ message window pinned to the latest line.
+  const logBoxRef = useRef<HTMLUListElement | null>(null);
+  useEffect(() => {
+    logBoxRef.current?.scrollTo({ top: logBoxRef.current.scrollHeight });
+  }, [log]);
 
   const playerSprite = useMemo(() => {
     const a = character.appearance ?? DEFAULT_APPEARANCE;
@@ -231,6 +268,11 @@ export function DailyBossPanel({
     setTreasureItem(null);
     setTreasureOpened(false);
     setTreasureBusy(false);
+    setItemStocks({ ...(character.consumables ?? {}) });
+    setAttackBoost(null);
+    setGoldEarned(0);
+    setGrowthResults([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, floor, maxBossHp, maxPlayerHp]);
 
   // Re-seed shadow ATB gauges whenever the equipped set actually changes
@@ -277,13 +319,12 @@ export function DailyBossPanel({
         let changed = false;
         const next: Record<string, number> = { ...prev };
         for (const s of equippedShadows) {
-          const speed = SHADOW_COMBAT[s.rarity].atbSpeed;
-          const v = (prev[s.id] ?? 0) + speed;
+          const power = shadowCombatPower(s);
+          const v = (prev[s.id] ?? 0) + power.atbSpeed;
           if (v >= ATB_TARGET) {
             // Fire — damage roll with a small variance band.
-            const atk = SHADOW_COMBAT[s.rarity].attack;
             const variance = 0.85 + Math.random() * 0.3;
-            const dmg = Math.max(1, Math.round(atk * variance));
+            const dmg = Math.max(1, Math.round(power.attack * variance));
             // Apply via setBossHp callback to keep state consistent.
             setBossHp((hpPrev) => {
               const after = Math.max(0, hpPrev - dmg);
@@ -293,7 +334,7 @@ export function DailyBossPanel({
               ...logPrev,
               {
                 id: `shadow-${s.id}-${Date.now()}-${Math.random()}`,
-                text: `▶ ${s.name} の連撃 → ${dmg} ダメージ`,
+                text: `${stageDisplayName(s.name, shadowLevel(s))}の ついげき! ${dmg} のダメージ!`,
                 tone: 'companion',
               },
             ]);
@@ -368,7 +409,7 @@ export function DailyBossPanel({
           ...prev,
           {
             id: `boss-miss-${Date.now()}`,
-            text: `${boss.name} の攻撃を回避!`,
+            text: `${boss.name}の こうげき! しかし ${character.name}は ひらりと かわした!`,
             tone: 'dodge',
           },
         ]);
@@ -385,8 +426,8 @@ export function DailyBossPanel({
           ...prev,
           {
             id: `boss-${Date.now()}`,
-            text: `${boss.name} の攻撃 → ${result.damage} ダメージ${
-              result.crit ? ' [クリティカル!]' : ''
+            text: `${boss.name}の こうげき! ${character.name}に ${result.damage} のダメージ!${
+              result.crit ? ' [痛恨の一撃!]' : ''
             }`,
             tone: result.crit ? 'crit' : 'boss',
           },
@@ -398,8 +439,34 @@ export function DailyBossPanel({
           tone: result.crit ? 'crit' : 'normal',
         });
         if (nextHp === 0) {
-          void finalize(false, turn);
-          return;
+          // 不死鳥の羽根: passive auto-revive, once per stock. Consumes the
+          // real inventory in the background; battle continues at 50% HP.
+          if ((itemStocks['phoenix-feather'] ?? 0) > 0) {
+            const reviveHp = Math.max(1, Math.round(maxPlayerHp * 0.5));
+            setItemStocks((prev) => ({
+              ...prev,
+              'phoenix-feather': (prev['phoenix-feather'] ?? 1) - 1,
+            }));
+            void onUseConsumable('phoenix-feather');
+            setPlayerHp(reviveHp);
+            setLog((prev) => [
+              ...prev,
+              {
+                id: `revive-${Date.now()}`,
+                text: `不死鳥の羽根が まばゆく かがやいた! ${character.name}は よみがえった!`,
+                tone: 'heal',
+              },
+            ]);
+            setDamageBurst({
+              key: Date.now() + 1,
+              value: reviveHp,
+              target: 'player',
+              tone: 'heal',
+            });
+          } else {
+            void finalize(false, turn);
+            return;
+          }
         }
       }
       setBossAtb(0);
@@ -410,6 +477,13 @@ export function DailyBossPanel({
   }, [phase]);
 
   const startBattle = () => {
+    setLog([
+      {
+        id: `encounter-${Date.now()}`,
+        text: `${boss.name}が あらわれた!`,
+        tone: 'system',
+      },
+    ]);
     setPhase('fighting');
   };
 
@@ -447,7 +521,7 @@ export function DailyBossPanel({
         ...prev,
         {
           id: `p-${nextTurn}-${Date.now()}`,
-          text: `${skill.name} → HP +${restored} 回復`,
+          text: `${character.name}は ${skill.name}を となえた! HPが ${restored} かいふくした!`,
           tone: 'heal',
         },
       ]);
@@ -464,11 +538,16 @@ export function DailyBossPanel({
       guaranteedCrit: skill.effect.guaranteedCrit,
       critBonusFlat: skill.effect.critBonusFlat,
     });
-    const nextBossHp = Math.max(0, bossHp - result.damage);
+    // 力の結晶: one-shot multiplier armed by the item, consumed here.
+    const boosted = attackBoost
+      ? Math.round(result.damage * attackBoost)
+      : result.damage;
+    if (attackBoost) setAttackBoost(null);
+    const nextBossHp = Math.max(0, bossHp - boosted);
     setBossHp(nextBossHp);
     setDamageBurst({
       key: Date.now(),
-      value: result.damage,
+      value: boosted,
       target: 'boss',
       tone: result.crit ? 'crit' : result.isWeak ? 'weak' : result.isResist ? 'resist' : 'normal',
     });
@@ -476,15 +555,98 @@ export function DailyBossPanel({
       ...prev,
       {
         id: `p-${nextTurn}-${Date.now()}`,
-        text: `${skill.name} (${skill.effect.kind === 'attack' ? skill.effect.stat : ''}) → ${result.damage} ダメージ${
-          result.crit ? ' [クリティカル!]' : result.isWeak ? ' [弱点!]' : result.isResist ? ' [軽減]' : ''
-        }`,
+        text: `${character.name}の ${skill.name}! ${boss.name}に ${boosted} のダメージ!${
+          result.crit ? ' [会心の一撃!]' : result.isWeak ? ' [弱点を突いた!]' : result.isResist ? ' [効きが悪い…]' : ''
+        }${attackBoost ? ' [結晶の力!]' : ''}`,
         tone: result.crit ? 'crit' : result.isWeak ? 'weak' : result.isResist ? 'resist' : undefined,
       },
     ]);
     if (nextBossHp === 0) {
       void finalize(true, nextTurn);
     } else {
+      setPhase('fighting');
+    }
+  };
+
+  // ── どうぐ (battle items) ──
+  // Using an item consumes the turn, DQ-style: cooldowns tick, ATB resets.
+  const handleUseItem = (template: ConsumableTemplate) => {
+    if (phase !== 'player-turn') return;
+    if ((itemStocks[template.id] ?? 0) <= 0) return;
+    if (template.effect.type === 'revive') return; // passive, not clickable
+    if (template.effect.type === 'attack-boost' && attackBoost) return; // already armed
+
+    setItemStocks((prev) => ({
+      ...prev,
+      [template.id]: (prev[template.id] ?? 1) - 1,
+    }));
+    void onUseConsumable(template.id);
+
+    const nextTurn = turn + 1;
+    setTurn(nextTurn);
+    setPlayerAtb(0);
+    setCooldowns((prev) => {
+      const next: Record<string, number> = {};
+      for (const id in prev) {
+        const remaining = Math.max(0, (prev[id] ?? 0) - 1);
+        if (remaining > 0) next[id] = remaining;
+      }
+      return next;
+    });
+
+    if (template.effect.type === 'heal') {
+      const healAmount = Math.round(maxPlayerHp * template.effect.percent);
+      const nextHp = Math.min(maxPlayerHp, playerHp + healAmount);
+      const restored = nextHp - playerHp;
+      setPlayerHp(nextHp);
+      setDamageBurst({ key: Date.now(), value: restored, target: 'player', tone: 'heal' });
+      setLog((prev) => [
+        ...prev,
+        {
+          id: `item-${nextTurn}-${Date.now()}`,
+          text: `${character.name}は ${template.name}を つかった! HPが ${restored} かいふくした!`,
+          tone: 'heal',
+        },
+      ]);
+    } else if (template.effect.type === 'attack-boost') {
+      const mult = template.effect.multiplier;
+      setAttackBoost(mult);
+      setLog((prev) => [
+        ...prev,
+        {
+          id: `item-${nextTurn}-${Date.now()}`,
+          text: `${character.name}は ${template.name}を くだいた! つぎの攻撃の威力が ${mult}倍に!`,
+          tone: 'system',
+        },
+      ]);
+    }
+    setPhase('fighting');
+  };
+
+  // ── にげる ──
+  // AGI-driven escape roll. Success returns to the roadmap with no attempt
+  // logged; failure wastes the turn (classic まわりこまれた).
+  const handleFlee = () => {
+    if (phase !== 'player-turn') return;
+    const agiDelta = (effective.AGI ?? 0) - boss.agility;
+    const chance = Math.max(0.3, Math.min(0.9, 0.5 + agiDelta * 0.02));
+    if (Math.random() < chance) {
+      setLog((prev) => [
+        ...prev,
+        { id: `flee-${Date.now()}`, text: `${character.name}は にげだした!`, tone: 'system' },
+      ]);
+      setPhase('roadmap');
+    } else {
+      setTurn((t) => t + 1);
+      setPlayerAtb(0);
+      setLog((prev) => [
+        ...prev,
+        {
+          id: `flee-${Date.now()}`,
+          text: `${character.name}は にげだした! しかし まわりこまれてしまった!`,
+          tone: 'boss',
+        },
+      ]);
       setPhase('fighting');
     }
   };
@@ -496,8 +658,8 @@ export function DailyBossPanel({
       {
         id: `final-${Date.now()}`,
         text: won
-          ? `Floor ${floor} の ${boss.name} を撃破!`
-          : `${boss.name} に敗北…`,
+          ? `${boss.name}を たおした!`
+          : `${character.name}は ちからつきた…`,
         tone: 'system',
       },
     ]);
@@ -517,13 +679,43 @@ export function DailyBossPanel({
     }
 
     if (won) {
-      // No EXP/stat reward — daily quest progression is the only path for
-      // character growth. Boss kills give shadow-extraction attempts +
-      // a chance at a weapon chest.
+      // No player EXP — daily quest progression is the only path for
+      // character growth. Boss kills pay a gold purse, feed the equipped
+      // shadows' growth, and grant extraction attempts + a chest chance.
+      const purse = bossGoldReward(floor);
+      setGoldEarned(purse);
+      setLog((prev) => [
+        ...prev,
+        {
+          id: `gold-${Date.now()}`,
+          text: `${purse} ゴールドを てにいれた!`,
+          tone: 'system',
+        },
+      ]);
+      onAwardGold(purse).catch((err) => console.error('[boss] gold award failed', err));
+
+      // Equipped shadows level up from the win (Pokémon-style party EXP).
+      onShadowGrowth(floor)
+        .then((growths) => {
+          setGrowthResults(growths);
+          const lines = growths
+            .filter((g) => g.levelsGained > 0)
+            .map((g) => ({
+              id: `growth-${g.shadow.id}-${Date.now()}`,
+              text: g.evolved && g.newStageName
+                ? `なんと! ${g.shadow.name}は ${g.newStageName}に しんかした!`
+                : `${g.shadow.name}は レベル ${shadowLevel(g.shadow)} に あがった!`,
+              tone: 'companion' as const,
+            }));
+          if (lines.length) setLog((prev) => [...prev, ...lines]);
+        })
+        .catch((err) => console.error('[boss] shadow growth failed', err));
+
       onEnqueueBossEvent({
         bossName: boss.name,
         won: true,
         floor,
+        gold: purse,
       });
 
       // Roll the treasure chest once per win. The actual weapon roll
@@ -854,7 +1046,8 @@ export function DailyBossPanel({
                   </p>
                   <div className={`grid gap-2 ${equippedShadows.length === 1 ? 'grid-cols-1' : equippedShadows.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
                     {equippedShadows.map((s) => {
-                      const combat = SHADOW_COMBAT[s.rarity];
+                      const combat = shadowCombatPower(s);
+                      const level = shadowLevel(s);
                       const atb = shadowAtbs[s.id] ?? 0;
                       const pct = Math.min(100, (atb / ATB_TARGET) * 100);
                       return (
@@ -864,10 +1057,10 @@ export function DailyBossPanel({
                         >
                           <div className="flex items-baseline justify-between gap-1">
                             <p className="truncate text-[11px] font-bold text-sys-text">
-                              {s.name}
+                              {stageDisplayName(s.name, level)}
                             </p>
                             <span className="text-[9px] font-mono text-sys-muted shrink-0">
-                              {s.stat} · ATK {combat.attack}
+                              Lv{level} · ATK {combat.attack}
                             </span>
                           </div>
                           <div className="mt-1 h-1 w-full overflow-hidden border border-sys-border/30 bg-black/60">
@@ -955,16 +1148,64 @@ export function DailyBossPanel({
                     })}
                   </div>
 
-                  <div className="border border-sys-border/30 bg-black/30 p-3">
+                  {/* どうぐ + にげる command row (player-turn only) */}
+                  {(phase === 'fighting' || phase === 'player-turn' || phase === 'boss-acting') && (
+                    <div className="flex flex-wrap items-stretch gap-2">
+                      {CONSUMABLES.filter((c) => c.effect.type !== 'revive').map((c) => {
+                        const held = itemStocks[c.id] ?? 0;
+                        const armed = c.effect.type === 'attack-boost' && attackBoost !== null;
+                        const canUse = phase === 'player-turn' && held > 0 && !armed;
+                        return (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => handleUseItem(c)}
+                            disabled={!canUse}
+                            title={c.description}
+                            className="relative flex items-center gap-1.5 border border-sys-gold/40 bg-sys-gold/5 px-2.5 py-1.5 text-[11px] font-bold text-sys-text transition hover:bg-sys-gold/15 active:translate-y-px disabled:opacity-40"
+                          >
+                            <span>{c.icon}</span>
+                            <span>{c.name}</span>
+                            <span className="font-mono text-[10px] text-sys-muted">×{held}</span>
+                            {armed && (
+                              <span className="font-mono text-[9px] text-sys-gold">装填中</span>
+                            )}
+                          </button>
+                        );
+                      })}
+                      {(itemStocks['phoenix-feather'] ?? 0) > 0 && (
+                        <span
+                          title={getConsumable('phoenix-feather')?.description}
+                          className="flex items-center gap-1.5 border border-sys-arise/40 bg-sys-arise/5 px-2.5 py-1.5 text-[11px] text-sys-muted"
+                        >
+                          🪶 不死鳥の羽根
+                          <span className="font-mono text-[10px]">×{itemStocks['phoenix-feather']}</span>
+                          <span className="text-[9px]">(自動発動)</span>
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={handleFlee}
+                        disabled={phase !== 'player-turn'}
+                        className="ml-auto flex items-center gap-1.5 border border-sys-border/40 bg-black/30 px-2.5 py-1.5 text-[11px] font-bold text-sys-muted transition hover:text-sys-text hover:bg-sys-danger/10 active:translate-y-px disabled:opacity-40"
+                      >
+                        <DoorOpen className="h-3.5 w-3.5" />
+                        にげる
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="dq-window p-3">
                     <p className="mb-2 text-[10px] uppercase tracking-widest text-sys-muted">
-                      バトルログ
+                      <FlaskConical className="mr-1 inline h-3 w-3 align-[-2px]" />
+                      メッセージ
                     </p>
                     {log.length === 0 ? (
                       <p className="text-xs text-sys-muted">
                         ATBが満タンになるまで待て…
                       </p>
                     ) : (
-                      <ul className="max-h-32 space-y-1 overflow-y-auto font-mono text-[11px]">
+                      <ul ref={logBoxRef} className="max-h-32 space-y-1 overflow-y-auto font-mono text-[11px]">
                         {log.map((l) => (
                           <li
                             key={l.id}
@@ -997,9 +1238,47 @@ export function DailyBossPanel({
 
                   {phase === 'won' && (
                     <>
-                      <div className="border border-sys-ok/50 bg-sys-ok/5 px-4 py-3 text-sm text-sys-ok">
-                        ✓ Floor {floor} 撃破 — 影を抽出できる
+                      <div className="border border-sys-ok/50 bg-sys-ok/5 px-4 py-3">
+                        <p className="text-sm text-sys-ok">
+                          ✓ Floor {floor} 撃破 — 影を抽出できる
+                        </p>
+                        {goldEarned > 0 && (
+                          <p className="mt-1 flex items-center gap-1.5 text-sm">
+                            <Coins className="h-4 w-4 text-sys-gold" />
+                            <span className="gold-text text-base">+{goldEarned} G</span>
+                            <span className="text-[10px] text-sys-muted">討伐報酬</span>
+                          </p>
+                        )}
                       </div>
+
+                      {/* Shadow party growth (Pokémon-style EXP share) */}
+                      {growthResults.length > 0 && (
+                        <div className="border border-sys-arise/40 bg-sys-arise/5 px-4 py-3 space-y-1.5">
+                          <p className="text-[10px] uppercase tracking-widest text-sys-arise">
+                            影軍団の成長
+                          </p>
+                          <ul className="space-y-1 font-mono text-[11px]">
+                            {growthResults.map((g) => {
+                              const lv = shadowLevel(g.shadow);
+                              return (
+                                <li key={g.shadow.id} className="flex items-baseline gap-2">
+                                  <span className={`truncate ${g.evolved ? 'rarity-legendary' : 'text-sys-text'}`}>
+                                    {g.evolved && g.newStageName
+                                      ? `⚡ ${g.newStageName} に進化!`
+                                      : stageDisplayName(g.shadow.name, lv)}
+                                  </span>
+                                  <span className="shrink-0 text-sys-muted">
+                                    Lv{lv}
+                                    {g.levelsGained > 0 && (
+                                      <span className="text-sys-ok"> (+{g.levelsGained})</span>
+                                    )}
+                                  </span>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        </div>
+                      )}
 
                       <div className="border border-sys-border/30 bg-black/30 px-4 py-3 space-y-3">
                         <div className="flex items-baseline justify-between">

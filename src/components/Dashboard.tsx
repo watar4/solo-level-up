@@ -38,12 +38,17 @@ const InventoryPanel     = lazy(() => import('./InventoryPanel').then((m) => ({ 
 const ApiKeysPanel       = lazy(() => import('./ApiKeysPanel').then((m) => ({ default: m.ApiKeysPanel })));
 const FocusGatePanel     = lazy(() => import('./FocusGatePanel').then((m) => ({ default: m.FocusGatePanel })));
 const MealPanel          = lazy(() => import('./MealPanel').then((m) => ({ default: m.MealPanel })));
+const ShopPanel          = lazy(() => import('./ShopPanel').then((m) => ({ default: m.ShopPanel })));
+const DexPanel           = lazy(() => import('./DexPanel').then((m) => ({ default: m.DexPanel })));
+const SavingsPanel       = lazy(() => import('./SavingsPanel').then((m) => ({ default: m.SavingsPanel })));
 import { TabBar, type DashboardTab } from './TabBar';
 import type { LucideIcon } from 'lucide-react';
 import { useShadows } from '../hooks/useShadows';
 import { useItems } from '../hooks/useItems';
+import { useSavings } from '../hooks/useSavings';
 import { rollShadowDrop, RARITY_LABEL } from '../lib/shadows';
 import { weaponStatBonus } from '../lib/items';
+import { walletGold } from '../lib/economy';
 import type { StatKey } from '../types';
 import { isQuestDoneToday, useGameData } from '../hooks/useGameData';
 import { createQuest } from '../lib/firestore';
@@ -52,8 +57,10 @@ import {
   Award,
   BarChart3,
   Backpack,
+  BookOpen,
   ChevronDown,
   ChevronUp,
+  Coins,
   Crown,
   History,
   KeyRound,
@@ -64,6 +71,7 @@ import {
   RotateCcw,
   ScrollText,
   Sparkles,
+  Store,
   Zap,
 } from 'lucide-react';
 
@@ -138,6 +146,8 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [apiKeysOpen, setApiKeysOpen] = useState(false);
   const [focusGateOpen, setFocusGateOpen] = useState(false);
+  const [shopOpen, setShopOpen] = useState(false);
+  const [dexOpen, setDexOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [actionSheet, setActionSheet] = useState<ActionSheetState | null>(null);
   // Active bottom-nav tab. Most feature panels stay as modals; the tab screens
@@ -150,6 +160,8 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
   // Inventory items (weapons). One equipped weapon contributes a stat
   // bonus to the player's effective stats in combat.
   const itemsData = useItems(user.uid);
+  // Real-world savings ledger (yen) — powers the 貯金 tab.
+  const savingsData = useSavings(user.uid);
 
   // Player effective stats = base + equipped weapon bonus.
   const effectiveStats = useMemo<Record<StatKey, number>>(() => {
@@ -182,6 +194,7 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
     if (!template) return;
     const shadow = await shadowData.awardShadow(template.id);
     if (!shadow) return;
+    void game.recordDexShadow(template.id);
     game.enqueueEvent({
       id: `shadow:${shadow.id}`,
       kind: 'shadow',
@@ -319,6 +332,10 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
           <div className="text-right">
             <p className="font-mono text-xs text-sys-muted">
               Lv.<span className="text-sys-accent">{character.level}</span>
+              <span className="mx-1.5 text-sys-border/40">|</span>
+              <Coins className="inline h-3 w-3 align-[-1px] text-sys-gold" />{' '}
+              <span className="gold-text text-sm">{walletGold(character).toLocaleString()}</span>
+              <span className="text-sys-muted"> G</span>
             </p>
             <p className="text-[10px] uppercase tracking-widest text-sys-muted">
               {character.name}
@@ -545,8 +562,38 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
                   sublabel={itemsData.equippedWeapon ? itemsData.equippedWeapon.name : '未装備'}
                   onClick={() => setInventoryOpen(true)}
                 />
+                <NavTile
+                  Icon={Store}
+                  label="ショップ"
+                  sublabel={`${walletGold(character).toLocaleString()} G`}
+                  accent="gold"
+                  onClick={() => setShopOpen(true)}
+                />
+                <NavTile
+                  Icon={BookOpen}
+                  label="討伐図鑑"
+                  sublabel="dex"
+                  onClick={() => setDexOpen(true)}
+                />
               </div>
             </SystemWindow>
+          </div>
+        )}
+
+        {tab === 'savings' && (
+          <div className="mx-auto max-w-xl">
+            <Suspense fallback={<div className="py-10 text-center text-sys-muted">読み込み中…</div>}>
+              <SavingsPanel
+                character={character}
+                savings={savingsData}
+                onSetSavingsGoal={game.setSavingsGoal}
+                onSetMonthlyBudget={game.setMonthlyBudget}
+                onMarkBudgetRewarded={game.markBudgetRewarded}
+                onAwardGold={game.addGold}
+                onAwardExp={game.awardExp}
+                onEnqueueEvent={game.enqueueEvent}
+              />
+            </Suspense>
           </div>
         )}
 
@@ -725,6 +772,7 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
             onAwardShadow={async (templateId) => {
               const shadow = await shadowData.awardShadow(templateId);
               if (!shadow) return null;
+              void game.recordDexShadow(templateId);
               return { id: shadow.id, name: shadow.name };
             }}
             onAwardWeapon={async (templateId) => {
@@ -737,6 +785,31 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
             // (victory + extraction UI, defeat + retry button). Suppress the
             // center-screen SystemToast so it doesn't cover the panel.
             onEnqueueBossEvent={() => undefined}
+            onAwardGold={game.addGold}
+            onUseConsumable={game.useConsumable}
+            onShadowGrowth={shadowData.gainShadowExpForWin}
+          />
+        )}
+        {shopOpen && (
+          <ShopPanel
+            open={shopOpen}
+            character={character}
+            onClose={() => setShopOpen(false)}
+            onBuyConsumable={game.buyConsumable}
+            onSpendGold={game.spendGold}
+            onAwardWeapon={async (templateId) => {
+              const w = await itemsData.awardWeapon(templateId);
+              if (!w) return null;
+              return { id: w.id, name: w.name };
+            }}
+          />
+        )}
+        {dexOpen && (
+          <DexPanel
+            open={dexOpen}
+            character={character}
+            shadows={shadowData.shadows}
+            onClose={() => setDexOpen(false)}
           />
         )}
         {inventoryOpen && (

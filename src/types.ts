@@ -75,6 +75,26 @@ export interface Character {
   // iOS automation polls. Lets a Shortcut read "did I clear a quest today?"
   // without Firebase auth. Undefined until the user enables the focus gate.
   gateSecret?: string;
+  // ----- economy -----
+  gold?: number; // wallet. Earned via quests / boss wins / real-world savings
+  // Consumable counts keyed by CONSUMABLES template id. Kept on the character
+  // doc (not per-doc items) so buying/using is a single cheap patch.
+  consumables?: Record<string, number>;
+  // templateIds of every shadow ever obtained — powers the dex even after
+  // the shadow itself is discarded.
+  dexShadows?: string[];
+  // ----- real-world savings link -----
+  savingsGoal?: SavingsGoal;
+  monthlyBudget?: number;          // yen — Rakuten-card spending cap goal
+  lastBudgetRewardMonth?: string;  // YYYY-MM guard for the under-budget reward
+}
+
+// Long-term savings target. Progress = sum of all savingsEntries (kind:
+// 'saving'). Framed in-game as an S-rank quest ("軍資金を貯めよ").
+export interface SavingsGoal {
+  targetAmount: number;   // yen
+  monthlyAmount?: number; // yen — optional monthly pace goal
+  label?: string;         // what the money is for ("旅行", "PC" …)
 }
 
 export type QuestType = 'daily' | 'weekly' | 'one-time';
@@ -209,6 +229,9 @@ export interface Shadow {
   rarity: ShadowRarity;
   equipped: boolean;
   createdAt: number;
+  // ----- growth (Pokémon-style). Absent on legacy docs → level 1, exp 0.
+  level?: number;
+  exp?: number;         // EXP within the current level
 }
 
 export interface BossAttempt {
@@ -261,7 +284,29 @@ export interface WeightInboxEntry {
   source?: string;      // free-text, e.g. "ios-shortcut"
 }
 
-export type SystemEventKind = 'level-up' | 'achievement' | 'skill' | 'shadow' | 'boss' | 'inbox' | 'nutrition';
+// ----- real-world savings / spending ledger -----
+
+export type SavingsSource = 'manual' | 'yucho-csv' | 'rakuten-csv';
+
+// One money movement. kind 'saving' = money set aside (counts toward the
+// goal, converts to gold). kind 'spending' = card usage (counts against the
+// monthly budget). `hash` fingerprints CSV rows so re-importing the same
+// file is idempotent.
+export interface SavingsEntry {
+  id: string;
+  uid: string;
+  date: string;        // YYYY-MM-DD
+  amount: number;      // yen, positive. kind decides the direction.
+  kind: 'saving' | 'spending';
+  memo: string;
+  source: SavingsSource;
+  hash?: string;
+  createdAt: number;
+}
+
+export type SystemEventKind =
+  | 'level-up' | 'achievement' | 'skill' | 'shadow' | 'boss' | 'inbox' | 'nutrition'
+  | 'gold' | 'item' | 'evolution' | 'savings';
 
 export interface SystemEvent {
   id: string;

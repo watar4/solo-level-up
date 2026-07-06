@@ -32,11 +32,13 @@ import type {
   HunterAppearance,
   NutritionTarget,
   Quest,
+  SavingsGoal,
   StatKey,
   SystemEvent,
   UnlockState,
 } from '../types';
 import { DIFFICULTY_EXP, EMPTY_UNLOCK } from '../types';
+import { QUEST_GOLD, getConsumable } from '../lib/economy';
 import {
   applyExp,
   levelFromTotalExp,
@@ -105,6 +107,23 @@ export interface GameData {
   enqueueEvent: (event: SystemEvent) => void;
   // Apply EXP gained from non-quest sources (boss reward, etc).
   awardExp: (amount: number) => Promise<void>;
+  // ----- gold economy -----
+  // Grant gold from non-quest sources (boss purse, savings conversion).
+  addGold: (amount: number) => Promise<void>;
+  // Spend gold if the wallet covers it. Returns false (no write) otherwise.
+  spendGold: (amount: number) => Promise<boolean>;
+  // Shop purchase: price check + wallet decrement + consumable increment in
+  // one character patch. Returns false when gold is insufficient.
+  buyConsumable: (consumableId: string) => Promise<boolean>;
+  // Consume one unit (battle usage). Returns false when none held.
+  useConsumable: (consumableId: string) => Promise<boolean>;
+  // Record a shadow template as "seen" for the dex (survives discards).
+  recordDexShadow: (templateId: string) => Promise<void>;
+  // ----- real-world savings link -----
+  setSavingsGoal: (goal: SavingsGoal | null) => Promise<void>;
+  setMonthlyBudget: (amount: number | null) => Promise<void>;
+  // Guard so the under-budget month reward fires once per YYYY-MM.
+  markBudgetRewarded: (month: string) => Promise<void>;
 }
 
 function isQuestDoneToday(quest: Quest): boolean {
@@ -366,6 +385,7 @@ export function useGameData(user: User | null): GameData {
           : quest.streak;
       const expGained = Math.round(baseExp * streakMultiplier(quest.type, newStreak));
       const statGain = STAT_PER_DIFFICULTY[quest.difficulty] ?? 1;
+      const goldGained = QUEST_GOLD[quest.difficulty];
 
       const oldLevel = character.level;
       const exp = applyExp(character.level, character.exp, character.totalExp, expGained);
@@ -380,6 +400,7 @@ export function useGameData(user: User | null): GameData {
         totalExp: exp.totalExp,
         stats,
         statPoints: character.statPoints + exp.statPointsGained,
+        gold: (character.gold ?? 0) + goldGained,
         lastSeenAt: Date.now(),
       };
 
@@ -437,6 +458,7 @@ export function useGameData(user: User | null): GameData {
           totalExp: updated.totalExp,
           stats: updated.stats,
           statPoints: updated.statPoints,
+          gold: updated.gold,
           lastSeenAt: updated.lastSeenAt,
           unlocked: updated.unlocked,
           title: updated.title,
@@ -469,6 +491,9 @@ export function useGameData(user: User | null): GameData {
         [quest.targetStat]: Math.max(0, character.stats[quest.targetStat] - statRefund),
       };
       const newStatPoints = Math.max(0, character.statPoints + levelDiff * 5);
+      // Gold is flat per difficulty (no streak multiplier), so the refund is
+      // exact — clamped only in case older completions predate the economy.
+      const newGold = Math.max(0, (character.gold ?? 0) - QUEST_GOLD[quest.difficulty]);
 
       const logs = await getCompletionsForQuest(user.uid, quest.id);
       const todaysLogIds = logs.filter((l) => l.date === today).map((l) => l.id);
@@ -485,6 +510,7 @@ export function useGameData(user: User | null): GameData {
           totalExp: newTotalExp,
           stats: newStats,
           statPoints: newStatPoints,
+          gold: newGold,
           lastSeenAt: Date.now(),
         }),
         todaysLogIds.length ? deleteCompletions(todaysLogIds) : Promise.resolve(),
@@ -497,6 +523,7 @@ export function useGameData(user: User | null): GameData {
         totalExp: newTotalExp,
         stats: newStats,
         statPoints: newStatPoints,
+        gold: newGold,
         lastSeenAt: Date.now(),
       });
     },
@@ -536,6 +563,7 @@ export function useGameData(user: User | null): GameData {
         const expRefund = logs.reduce((sum, l) => sum + l.expGained, 0);
         const statRefund =
           (STAT_PER_DIFFICULTY[quest.difficulty] ?? 1) * logs.length;
+        const goldRefund = QUEST_GOLD[quest.difficulty] * logs.length;
 
         const newTotalExp = Math.max(0, character.totalExp - expRefund);
         const { level: newLevel, exp: newExp } = levelFromTotalExp(newTotalExp);
@@ -545,6 +573,7 @@ export function useGameData(user: User | null): GameData {
           [quest.targetStat]: Math.max(0, character.stats[quest.targetStat] - statRefund),
         };
         const newStatPoints = Math.max(0, character.statPoints + levelDiff * 5);
+        const newGold = Math.max(0, (character.gold ?? 0) - goldRefund);
 
         await Promise.all([
           deleteQuest(quest.id),
@@ -554,6 +583,7 @@ export function useGameData(user: User | null): GameData {
             totalExp: newTotalExp,
             stats: newStats,
             statPoints: newStatPoints,
+            gold: newGold,
             lastSeenAt: Date.now(),
           }),
           logs.length ? deleteCompletions(logs.map((l) => l.id)) : Promise.resolve(),
@@ -566,6 +596,7 @@ export function useGameData(user: User | null): GameData {
           totalExp: newTotalExp,
           stats: newStats,
           statPoints: newStatPoints,
+          gold: newGold,
           lastSeenAt: Date.now(),
         });
       } finally {
@@ -845,6 +876,126 @@ export function useGameData(user: User | null): GameData {
     [user, character, enqueue]
   );
 
+  // ----- gold economy -------------------------------------------------
+
+  const addGold = useCallback(
+    async (amount: number): Promise<void> => {
+      if (!user || !character || amount <= 0) return;
+      const newGold = (character.gold ?? 0) + Math.round(amount);
+      setCharacter({ ...character, gold: newGold });
+      await updateCharacter(user.uid, { gold: newGold });
+    },
+    [user, character]
+  );
+
+  const spendGold = useCallback(
+    async (amount: number): Promise<boolean> => {
+      if (!user || !character || amount <= 0) return false;
+      const wallet = character.gold ?? 0;
+      if (wallet < amount) return false;
+      const newGold = wallet - Math.round(amount);
+      setCharacter({ ...character, gold: newGold });
+      try {
+        await updateCharacter(user.uid, { gold: newGold });
+        return true;
+      } catch (err) {
+        console.error('[gold:spend] failed, rolling back', err);
+        setCharacter(character);
+        throw err;
+      }
+    },
+    [user, character]
+  );
+
+  const buyConsumable = useCallback(
+    async (consumableId: string): Promise<boolean> => {
+      if (!user || !character) return false;
+      const template = getConsumable(consumableId);
+      if (!template) return false;
+      const wallet = character.gold ?? 0;
+      if (wallet < template.price) return false;
+      const consumables = {
+        ...(character.consumables ?? {}),
+        [consumableId]: (character.consumables?.[consumableId] ?? 0) + 1,
+      };
+      const newGold = wallet - template.price;
+      setCharacter({ ...character, gold: newGold, consumables });
+      try {
+        await updateCharacter(user.uid, { gold: newGold, consumables });
+        return true;
+      } catch (err) {
+        console.error('[shop:buy] failed, rolling back', err);
+        setCharacter(character);
+        throw err;
+      }
+    },
+    [user, character]
+  );
+
+  const useConsumable = useCallback(
+    async (consumableId: string): Promise<boolean> => {
+      if (!user || !character) return false;
+      const held = character.consumables?.[consumableId] ?? 0;
+      if (held <= 0) return false;
+      const consumables = { ...(character.consumables ?? {}), [consumableId]: held - 1 };
+      setCharacter({ ...character, consumables });
+      try {
+        await updateCharacter(user.uid, { consumables });
+        return true;
+      } catch (err) {
+        console.error('[item:use] failed, rolling back', err);
+        setCharacter(character);
+        throw err;
+      }
+    },
+    [user, character]
+  );
+
+  const recordDexShadow = useCallback(
+    async (templateId: string): Promise<void> => {
+      if (!user || !character) return;
+      const seen = character.dexShadows ?? [];
+      if (seen.includes(templateId)) return;
+      const dexShadows = [...seen, templateId];
+      setCharacter({ ...character, dexShadows });
+      await updateCharacter(user.uid, { dexShadows });
+    },
+    [user, character]
+  );
+
+  // ----- real-world savings config --------------------------------------
+
+  const setSavingsGoal = useCallback(
+    async (goal: SavingsGoal | null): Promise<void> => {
+      if (!user || !character) return;
+      setCharacter({ ...character, savingsGoal: goal ?? undefined });
+      await updateCharacter(user.uid, {
+        savingsGoal: (goal === null ? null : goal) as SavingsGoal | undefined,
+      });
+    },
+    [user, character]
+  );
+
+  const setMonthlyBudget = useCallback(
+    async (amount: number | null): Promise<void> => {
+      if (!user || !character) return;
+      setCharacter({ ...character, monthlyBudget: amount ?? undefined });
+      await updateCharacter(user.uid, {
+        monthlyBudget: (amount === null ? null : amount) as number | undefined,
+      });
+    },
+    [user, character]
+  );
+
+  const markBudgetRewarded = useCallback(
+    async (month: string): Promise<void> => {
+      if (!user || !character) return;
+      setCharacter({ ...character, lastBudgetRewardMonth: month });
+      await updateCharacter(user.uid, { lastBudgetRewardMonth: month });
+    },
+    [user, character]
+  );
+
   // Once-daily nutrition reward. Self-contained (does not call awardExp) so
   // the EXP bump and the lastNutritionRewardDate guard land in a single
   // setCharacter/updateCharacter pair — avoids a stale-closure race that would
@@ -971,6 +1122,7 @@ export function useGameData(user: User | null): GameData {
       deleteAllByUid('items', uid),
       deleteAllByUid('bossAttempts', uid),
       deleteAllByUid('weightInbox', uid),
+      deleteAllByUid('savingsEntries', uid),
     ]);
     // The focus-gate doc is keyed by its secret (not listable by uid), so it
     // can't go through deleteAllByUid — remove it directly if one exists.
@@ -1013,6 +1165,14 @@ export function useGameData(user: User | null): GameData {
     resetAccount,
     enqueueEvent,
     awardExp,
+    addGold,
+    spendGold,
+    buyConsumable,
+    useConsumable,
+    recordDexShadow,
+    setSavingsGoal,
+    setMonthlyBudget,
+    markBudgetRewarded,
     initializeMaster,
     isMaster: isMasterEmail(user?.email),
   };

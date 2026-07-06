@@ -1,13 +1,14 @@
 import type { LucideIcon } from 'lucide-react';
-import { ScrollText, UserRound, UtensilsCrossed, Swords, Menu } from 'lucide-react';
+import { ScrollText, UserRound, UtensilsCrossed, Swords, PiggyBank, Menu } from 'lucide-react';
 
-export type DashboardTab = 'quest' | 'status' | 'meal' | 'combat' | 'menu';
+export type DashboardTab = 'quest' | 'status' | 'meal' | 'combat' | 'savings' | 'menu';
 
 const TABS: { id: DashboardTab; label: string; Icon: LucideIcon }[] = [
   { id: 'quest', label: 'クエスト', Icon: ScrollText },
   { id: 'status', label: 'ステータス', Icon: UserRound },
   { id: 'meal', label: '食事', Icon: UtensilsCrossed },
   { id: 'combat', label: '戦闘', Icon: Swords },
+  { id: 'savings', label: '貯金', Icon: PiggyBank },
   { id: 'menu', label: 'メニュー', Icon: Menu },
 ];
 

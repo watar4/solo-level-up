@@ -17,11 +17,47 @@
   }
   body {
     @apply bg-sys-bg text-sys-text font-sans antialiased;
+    /* Layered ambience: a cold cyan glow top-left, an "arise" purple bloom
+       bottom-right, and a deep vertical falloff. The purple is the second
+       brand hue (shadow soldiers / rare drops) so the world doesn't read
+       as monochrome cyan. */
     background-image:
-      radial-gradient(circle at 20% 10%, rgba(0, 212, 255, 0.08), transparent 50%),
-      radial-gradient(circle at 80% 90%, rgba(95, 90, 255, 0.08), transparent 55%),
-      linear-gradient(180deg, #02040a 0%, #050810 100%);
+      radial-gradient(circle at 18% 8%, rgba(0, 212, 255, 0.10), transparent 46%),
+      radial-gradient(circle at 85% 92%, rgba(124, 58, 237, 0.13), transparent 52%),
+      radial-gradient(circle at 70% 20%, rgba(59, 130, 246, 0.05), transparent 40%),
+      linear-gradient(180deg, #02040a 0%, #050810 55%, #070512 100%);
     background-attachment: fixed;
+  }
+  /* Mana dust: a fixed particle field drifting slowly upward. Pure CSS
+     (repeating radial dots + one GPU transform animation), sits behind all
+     content and never intercepts input. */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: -30% 0;
+    pointer-events: none;
+    z-index: 0;
+    background-image:
+      radial-gradient(1.5px 1.5px at 12% 20%, rgba(95, 201, 255, 0.5), transparent 100%),
+      radial-gradient(1px 1px at 30% 65%, rgba(168, 85, 247, 0.45), transparent 100%),
+      radial-gradient(1.5px 1.5px at 48% 35%, rgba(230, 240, 255, 0.35), transparent 100%),
+      radial-gradient(1px 1px at 64% 80%, rgba(95, 201, 255, 0.4), transparent 100%),
+      radial-gradient(2px 2px at 78% 15%, rgba(0, 212, 255, 0.3), transparent 100%),
+      radial-gradient(1px 1px at 90% 50%, rgba(168, 85, 247, 0.35), transparent 100%),
+      radial-gradient(1.5px 1.5px at 5% 85%, rgba(230, 240, 255, 0.25), transparent 100%);
+    background-size: 100% 50%;
+    background-repeat: repeat-y;
+    animation: mana-drift 60s linear infinite;
+    opacity: 0.7;
+  }
+  @keyframes mana-drift {
+    0% { transform: translateY(0); }
+    100% { transform: translateY(-33.33%); }
+  }
+  /* All app content paints above the particle layer. */
+  #root {
+    position: relative;
+    z-index: 1;
   }
   ::selection {
     background: rgba(0, 212, 255, 0.35);
@@ -37,15 +73,19 @@
 }
 
 @layer components {
-  /* Solo-Leveling style "system window" — sharp clipped corners with cyan border + inner glow */
+  /* Solo-Leveling style "system window" — sharp clipped corners with cyan
+     border + inner glow. v2: adds a hairline second frame and a top-edge
+     highlight so panels read as layered glass instead of flat boxes. */
   .sys-window {
     position: relative;
     background:
-      linear-gradient(180deg, rgba(8, 14, 30, 0.92) 0%, rgba(5, 10, 22, 0.92) 100%);
+      linear-gradient(180deg, rgba(10, 18, 36, 0.94) 0%, rgba(5, 10, 22, 0.94) 100%);
     border: 1px solid rgba(95, 201, 255, 0.55);
     box-shadow:
-      0 0 0 1px rgba(95, 201, 255, 0.15),
+      0 0 0 1px rgba(95, 201, 255, 0.14),
       0 0 24px rgba(0, 212, 255, 0.18),
+      0 12px 32px rgba(0, 0, 0, 0.45),
+      inset 0 1px 0 rgba(180, 230, 255, 0.22),
       inset 0 0 24px rgba(0, 212, 255, 0.05);
     clip-path: polygon(
       14px 0,
@@ -59,25 +99,40 @@
     );
   }
 
+  /* Scanline texture + a slow holographic sheen that sweeps the panel. */
   .sys-window::before {
     content: '';
     position: absolute;
     inset: 0;
     pointer-events: none;
-    background: linear-gradient(
-      180deg,
-      transparent 0%,
-      rgba(95, 201, 255, 0.04) 50%,
-      transparent 100%
-    );
-    background-size: 100% 8px;
-    background-repeat: repeat-y;
-    opacity: 0.6;
+    background:
+      linear-gradient(
+        115deg,
+        transparent 0%,
+        transparent 42%,
+        rgba(120, 220, 255, 0.055) 50%,
+        transparent 58%,
+        transparent 100%
+      ),
+      linear-gradient(
+        180deg,
+        transparent 0%,
+        rgba(95, 201, 255, 0.04) 50%,
+        transparent 100%
+      );
+    background-size: 300% 100%, 100% 8px;
+    background-repeat: no-repeat, repeat-y;
+    animation: holo-sweep 9s ease-in-out infinite;
+    opacity: 0.8;
     mix-blend-mode: screen;
+  }
+  @keyframes holo-sweep {
+    0%, 55% { background-position: 130% 0, 0 0; }
+    85%, 100% { background-position: -60% 0, 0 0; }
   }
 
   .sys-title {
-    @apply text-sys-accent font-bold tracking-[0.3em] text-xs uppercase;
+    @apply text-sys-accent font-bold tracking-[0.3em] text-xs uppercase font-display;
     text-shadow: 0 0 8px rgba(0, 212, 255, 0.5);
   }
 
@@ -90,7 +145,8 @@
     border: 1px solid rgba(95, 201, 255, 0.6);
     box-shadow:
       0 0 0 1px rgba(95, 201, 255, 0.1),
-      0 0 14px rgba(0, 212, 255, 0.25);
+      0 0 14px rgba(0, 212, 255, 0.25),
+      inset 0 1px 0 rgba(180, 230, 255, 0.25);
     clip-path: polygon(
       8px 0,
       calc(100% - 8px) 0,
@@ -107,7 +163,8 @@
     background: linear-gradient(180deg, rgba(0, 212, 255, 0.32), rgba(0, 130, 220, 0.2));
     box-shadow:
       0 0 0 1px rgba(95, 201, 255, 0.2),
-      0 0 22px rgba(0, 212, 255, 0.45);
+      0 0 22px rgba(0, 212, 255, 0.45),
+      inset 0 1px 0 rgba(180, 230, 255, 0.3);
   }
   .sys-button:active {
     transform: translateY(1px);
@@ -137,6 +194,30 @@
     box-shadow: 0 0 22px rgba(255, 75, 105, 0.45);
   }
 
+  /* Gold variant — economy actions (shop purchase / savings deposit). */
+  .sys-button-gold {
+    color: #ffe9a8;
+    background: linear-gradient(180deg, rgba(255, 215, 0, 0.2), rgba(180, 130, 0, 0.12));
+    border-color: rgba(255, 215, 0, 0.55);
+    box-shadow: 0 0 14px rgba(255, 200, 0, 0.22);
+  }
+  .sys-button-gold:hover {
+    background: linear-gradient(180deg, rgba(255, 215, 0, 0.32), rgba(190, 140, 0, 0.2));
+    box-shadow: 0 0 22px rgba(255, 200, 0, 0.4);
+  }
+
+  /* Purple variant — shadow / arise-flavored actions (extraction, evolution). */
+  .sys-button-arise {
+    color: #e8d5ff;
+    background: linear-gradient(180deg, rgba(168, 85, 247, 0.22), rgba(109, 40, 217, 0.12));
+    border-color: rgba(168, 85, 247, 0.6);
+    box-shadow: 0 0 14px rgba(168, 85, 247, 0.25);
+  }
+  .sys-button-arise:hover {
+    background: linear-gradient(180deg, rgba(168, 85, 247, 0.36), rgba(109, 40, 217, 0.22));
+    box-shadow: 0 0 22px rgba(168, 85, 247, 0.45);
+  }
+
   .sys-input {
     @apply w-full bg-black/40 border border-sys-border/40 px-3 py-2 text-sys-text outline-none;
     box-shadow: inset 0 0 8px rgba(0, 212, 255, 0.08);
@@ -159,11 +240,77 @@
     height: 10px;
     border-color: #5fc9ff;
     pointer-events: none;
+    filter: drop-shadow(0 0 3px rgba(95, 201, 255, 0.8));
   }
   .corner-mark.tl { top: 6px; left: 6px; border-top: 2px solid; border-left: 2px solid; }
   .corner-mark.tr { top: 6px; right: 6px; border-top: 2px solid; border-right: 2px solid; }
   .corner-mark.bl { bottom: 6px; left: 6px; border-bottom: 2px solid; border-left: 2px solid; }
   .corner-mark.br { bottom: 6px; right: 6px; border-bottom: 2px solid; border-right: 2px solid; }
+
+  /* ── Gauge bars (EXP / HP / savings-goal) ────────────────────────────
+     Track + fill + a shimmer highlight that sweeps the filled portion.
+     Usage:
+       <div class="sys-bar"><div class="sys-bar-fill bg-…" style="width:…">
+         <span class="sys-bar-shine" /></div></div> */
+  .sys-bar {
+    @apply relative h-2.5 w-full overflow-hidden bg-black/50;
+    border: 1px solid rgba(95, 201, 255, 0.3);
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.6);
+  }
+  .sys-bar-fill {
+    @apply relative h-full overflow-hidden;
+    transition: width 500ms cubic-bezier(0.2, 0.8, 0.3, 1);
+  }
+  .sys-bar-shine {
+    @apply absolute inset-y-0 w-1/3 animate-shimmer;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.35),
+      transparent
+    );
+  }
+
+  /* ── DQ-style message window ─────────────────────────────────────────
+     The classic double-frame command/message box, tinted to this world:
+     near-black navy field, white outer frame, cyan inner hairline. Used by
+     the battle message log and command menus. */
+  .dq-window {
+    position: relative;
+    background: linear-gradient(180deg, rgba(4, 8, 18, 0.97), rgba(2, 5, 12, 0.97));
+    border: 3px solid #eaf6ff;
+    border-radius: 6px;
+    box-shadow:
+      0 0 0 2px rgba(4, 8, 18, 0.97),
+      0 0 0 3px rgba(95, 201, 255, 0.7),
+      0 0 18px rgba(0, 212, 255, 0.25),
+      inset 0 0 14px rgba(0, 212, 255, 0.07);
+    color: #eaf6ff;
+  }
+
+  /* Blinking "▼" continue-cursor for message windows. */
+  .dq-cursor {
+    animation: dq-blink 0.9s steps(2, start) infinite;
+  }
+  @keyframes dq-blink {
+    to { visibility: hidden; }
+  }
+
+  /* ── Rarity identity (shadows / weapons / drops) ─────────────────────── */
+  .rarity-normal { color: #b9c6da; }
+  .rarity-rare { color: #4ecdff; text-shadow: 0 0 8px rgba(78, 205, 255, 0.5); }
+  .rarity-epic { color: #c084fc; text-shadow: 0 0 8px rgba(192, 132, 252, 0.55); }
+  .rarity-legendary { color: #ffd700; text-shadow: 0 0 10px rgba(255, 215, 0, 0.6); }
+
+  /* Gold readout — gradient-filled numerals for the wallet display. */
+  .gold-text {
+    @apply font-display font-bold;
+    background: linear-gradient(180deg, #fff3b0 0%, #ffd700 45%, #d4900a 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    filter: drop-shadow(0 0 6px rgba(255, 200, 0, 0.35));
+  }
 
   /* Drag pickup feedback — runs the instant the long-press activation
      threshold fires (isDragging flips to true), *before* any finger movement.
@@ -202,8 +349,9 @@
 /* Respect the user's OS-level "reduce motion" preference. iOS/macOS users who
    enable this in accessibility settings get all decorative motion neutralised
    while functional state changes (opacity for visibility, color for state)
-   still render. Covers our own keyframes (scan / flash / quest-pickup) plus
-   third-party libs (framer-motion, dnd-kit transforms). */
+   still render. Covers our own keyframes (scan / flash / quest-pickup /
+   mana-drift / holo-sweep / shimmer) plus third-party libs (framer-motion,
+   dnd-kit transforms). */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -219,10 +367,14 @@
     transform: none !important;
     filter: none !important;
   }
+  body::before {
+    animation: none !important;
+  }
 }
 
 /* Stable digit widths so EXP / level / score counters don't jitter sideways
    as the numbers tick (the theme leans on JetBrains Mono for all readouts). */
-.font-mono {
+.font-mono,
+.font-display {
   font-variant-numeric: tabular-nums;
 }
