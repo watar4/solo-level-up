@@ -6,6 +6,7 @@ import {
   CONSUMABLES,
   WEAPON_GACHA_PRICE,
   consumableCount,
+  formatGold,
   walletGold,
 } from '../lib/economy';
 import { rollChestWeapon, weaponBonusFor } from '../lib/items';
@@ -100,7 +101,7 @@ export function ShopPanel({
           <div className="mb-2 flex items-center justify-between">
             <p className="flex items-center gap-1.5 text-sm">
               <Coins className="h-4 w-4 text-sys-gold" />
-              <span className="gold-text text-lg">{gold.toLocaleString()}</span>
+              <span className="gold-text text-lg">{formatGold(gold)}</span>
               <span className="text-[10px] text-sys-muted">G (所持ゴールド)</span>
             </p>
             <button

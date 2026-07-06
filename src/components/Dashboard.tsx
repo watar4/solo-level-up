@@ -50,7 +50,7 @@ import { useItems } from '../hooks/useItems';
 import { useSavings } from '../hooks/useSavings';
 import { rollShadowDrop, RARITY_LABEL } from '../lib/shadows';
 import { weaponStatBonus } from '../lib/items';
-import { walletGold } from '../lib/economy';
+import { formatGold, walletGold } from '../lib/economy';
 import { expForLevel, rankForLevel } from '../lib/leveling';
 import { DEFAULT_APPEARANCE, renderClassSprite } from '../lib/playerSprites';
 import type { Rank, StatKey } from '../types';
@@ -206,7 +206,7 @@ function HudBar({
                 <span className="sys-bar-shine" />
               </div>
             </div>
-            <span className="shrink-0 font-mono text-[9px] text-sys-muted">
+            <span className="hidden shrink-0 font-mono text-[9px] text-sys-muted sm:inline">
               {character.exp}/{need}
             </span>
           </div>
@@ -215,7 +215,7 @@ function HudBar({
           <p className="flex items-center justify-end gap-1">
             <Coins className="h-3.5 w-3.5 text-sys-gold" />
             <span className="gold-text text-base leading-none">
-              {walletGold(character).toLocaleString()}
+              {formatGold(walletGold(character))}
             </span>
           </p>
           <p className="mt-0.5 text-[8px] uppercase tracking-[0.2em] text-sys-muted">gold</p>
@@ -649,7 +649,7 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
                 <NavTile
                   Icon={Store}
                   label="ショップ"
-                  sublabel={`${walletGold(character).toLocaleString()} G`}
+                  sublabel={`${formatGold(walletGold(character))} G`}
                   accent="gold"
                   onClick={() => setShopOpen(true)}
                 />

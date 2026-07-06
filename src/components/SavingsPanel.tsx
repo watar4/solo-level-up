@@ -72,16 +72,19 @@ export function SavingsPanel({
   const [entryAmount, setEntryAmount] = useState('');
   const [entryMemo, setEntryMemo] = useState('');
   const [entryBusy, setEntryBusy] = useState(false);
+  const [entryError, setEntryError] = useState<string | null>(null);
 
   // ── goal form ──
   const [goalEditing, setGoalEditing] = useState(false);
   const [goalAmount, setGoalAmount] = useState('');
   const [goalLabel, setGoalLabel] = useState('');
   const [goalMonthly, setGoalMonthly] = useState('');
+  const [goalError, setGoalError] = useState<string | null>(null);
 
   // ── budget form ──
   const [budgetEditing, setBudgetEditing] = useState(false);
   const [budgetAmount, setBudgetAmount] = useState('');
+  const [budgetError, setBudgetError] = useState<string | null>(null);
 
   // ── CSV import ──
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -113,9 +116,49 @@ export function SavingsPanel({
     }
   };
 
+  // ¥1 〜 ¥1億まで。それ以外は入力ミスとみなして弾く。
+  const MAX_AMOUNT = 100_000_000;
+
+  // Shared money-input validator. Returns the parsed integer or null with a
+  // human error message pushed through setError.
+  const parseYenInput = (
+    raw: string,
+    setError: (msg: string | null) => void
+  ): number | null => {
+    const cleaned = raw.replace(/[,，\s]/g, '');
+    if (cleaned === '') {
+      setError('金額を入力してください');
+      return null;
+    }
+    const n = Number(cleaned);
+    if (!Number.isFinite(n) || !Number.isInteger(n)) {
+      setError('金額は整数で入力してください');
+      return null;
+    }
+    if (n <= 0) {
+      setError('金額は1円以上で入力してください');
+      return null;
+    }
+    if (n > MAX_AMOUNT) {
+      setError(`金額は ${formatYen(MAX_AMOUNT)} 以下で入力してください`);
+      return null;
+    }
+    setError(null);
+    return n;
+  };
+
   const handleAddEntry = async () => {
-    const raw = Number(entryAmount.replace(/[,，]/g, ''));
-    if (!Number.isFinite(raw) || raw <= 0 || entryBusy) return;
+    if (entryBusy) return;
+    const raw = parseYenInput(entryAmount, setEntryError);
+    if (raw === null) return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(entryDate)) {
+      setEntryError('日付を選択してください');
+      return;
+    }
+    if (entryDate > todayKey()) {
+      setEntryError('未来の日付は記帳できません');
+      return;
+    }
     setEntryBusy(true);
     try {
       const kind = entryKind === 'spending' ? 'spending' : 'saving';
@@ -135,6 +178,7 @@ export function SavingsPanel({
       setEntryMemo('');
     } catch (err) {
       console.error('[savings] add entry failed', err);
+      setEntryError('保存に失敗しました。通信環境を確認してください');
     } finally {
       setEntryBusy(false);
     }
@@ -158,11 +202,19 @@ export function SavingsPanel({
     }
   };
 
+  // One import writes one Firestore doc per row — cap a single batch so a
+  // pathological CSV can't fire tens of thousands of writes.
+  const MAX_IMPORT_ROWS = 1000;
+
   const handleImport = async () => {
     if (!preview || importBusy) return;
     setImportBusy(true);
     try {
-      const { statement } = preview;
+      const statement = {
+        ...preview.statement,
+        rows: preview.statement.rows.slice(0, MAX_IMPORT_ROWS),
+      };
+      const truncated = preview.statement.rows.length - statement.rows.length;
       const result = await savings.importRows(statement.rows, formatToSource(statement.format));
       const savedYen = statement.rows
         .filter((r) => r.kind === 'saving' && r.amount > 0)
@@ -172,7 +224,8 @@ export function SavingsPanel({
       }
       setImportNotice(
         `${result.imported} 件を取り込みました` +
-          (result.duplicates > 0 ? ` (重複 ${result.duplicates} 件はスキップ)` : '')
+          (result.duplicates > 0 ? ` (重複 ${result.duplicates} 件はスキップ)` : '') +
+          (truncated > 0 ? ` / 上限 ${MAX_IMPORT_ROWS} 行のため ${truncated} 行は未取込` : '')
       );
       setPreview(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -185,24 +238,38 @@ export function SavingsPanel({
   };
 
   const handleSaveGoal = async () => {
-    const target = Number(goalAmount.replace(/[,，]/g, ''));
-    if (!Number.isFinite(target) || target <= 0) return;
-    const monthly = Number(goalMonthly.replace(/[,，]/g, ''));
+    const target = parseYenInput(goalAmount, setGoalError);
+    if (target === null) return;
+    let monthly: number | undefined;
+    if (goalMonthly.replace(/[,，\s]/g, '') !== '') {
+      const m = parseYenInput(goalMonthly, setGoalError);
+      if (m === null) return;
+      if (m > target) {
+        setGoalError('月間目標が総目標を超えています');
+        return;
+      }
+      monthly = m;
+    }
+    setGoalError(null);
     await onSetSavingsGoal({
-      targetAmount: Math.round(target),
-      ...(Number.isFinite(monthly) && monthly > 0 ? { monthlyAmount: Math.round(monthly) } : {}),
-      ...(goalLabel.trim() ? { label: goalLabel.trim() } : {}),
+      targetAmount: target,
+      ...(monthly ? { monthlyAmount: monthly } : {}),
+      ...(goalLabel.trim() ? { label: goalLabel.trim().slice(0, 20) } : {}),
     });
     setGoalEditing(false);
   };
 
   const handleSaveBudget = async () => {
-    const v = Number(budgetAmount.replace(/[,，]/g, ''));
-    if (!Number.isFinite(v) || v <= 0) {
+    // 空欄で確定 = 予算を解除。それ以外は通常の金額検証。
+    if (budgetAmount.replace(/[,，\s]/g, '') === '') {
+      setBudgetError(null);
       await onSetMonthlyBudget(null);
-    } else {
-      await onSetMonthlyBudget(Math.round(v));
+      setBudgetEditing(false);
+      return;
     }
+    const v = parseYenInput(budgetAmount, setBudgetError);
+    if (v === null) return;
+    await onSetMonthlyBudget(v);
     setBudgetEditing(false);
   };
 
@@ -276,22 +343,24 @@ export function SavingsPanel({
 
   return (
     <div className="space-y-4">
-      {/* ── Overview ── */}
+      {/* ── Overview ──
+          Hero row for the lifetime total (8桁でも収まる幅を独占)、
+          その下に月次2指標を半分ずつ。3等分だと ¥1,234,567 級で溢れる。 */}
       <SystemWindow title="Vault" subtitle="real savings">
-        <div className="grid grid-cols-3 gap-2 text-center">
-          <div className="border border-sys-gold/40 bg-sys-gold/5 px-2 py-3">
+        <div className="grid grid-cols-2 gap-2 text-center">
+          <div className="col-span-2 border border-sys-gold/40 bg-sys-gold/5 px-2 py-3">
             <p className="text-[9px] uppercase tracking-widest text-sys-muted">総貯金</p>
-            <p className="gold-text mt-1 text-xl sm:text-2xl">{formatYen(savings.total)}</p>
+            <p className="gold-text mt-1 text-3xl">{formatYen(savings.total)}</p>
           </div>
-          <div className="border border-sys-border/40 bg-black/30 px-2 py-3">
+          <div className="border border-sys-border/40 bg-black/30 px-2 py-2.5">
             <p className="text-[9px] uppercase tracking-widest text-sys-muted">今月の貯金</p>
-            <p className={`mt-1 font-display text-lg sm:text-xl ${savings.thisMonthSaved >= 0 ? 'text-sys-ok' : 'text-sys-danger'}`}>
+            <p className={`mt-1 font-display text-base sm:text-lg ${savings.thisMonthSaved >= 0 ? 'text-sys-ok' : 'text-sys-danger'}`}>
               {formatYen(savings.thisMonthSaved)}
             </p>
           </div>
-          <div className="border border-sys-border/40 bg-black/30 px-2 py-3">
+          <div className="border border-sys-border/40 bg-black/30 px-2 py-2.5">
             <p className="text-[9px] uppercase tracking-widest text-sys-muted">今月のカード利用</p>
-            <p className={`mt-1 font-display text-lg sm:text-xl ${overBudget ? 'text-sys-danger' : 'text-sys-text'}`}>
+            <p className={`mt-1 font-display text-base sm:text-lg ${overBudget ? 'text-sys-danger' : 'text-sys-text'}`}>
               {formatYen(savings.thisMonthSpent)}
             </p>
           </div>
@@ -306,7 +375,7 @@ export function SavingsPanel({
         {goal && !goalEditing ? (
           <div className="space-y-2">
             <div className="flex items-baseline justify-between gap-2">
-              <p className="text-sm font-bold text-sys-text">
+              <p className="min-w-0 truncate text-sm font-bold text-sys-text">
                 <Target className="mr-1 inline h-4 w-4 align-[-2px] text-sys-gold" />
                 軍資金を貯めよ{goal.label ? ` — ${goal.label}` : ''}
               </p>
@@ -323,7 +392,7 @@ export function SavingsPanel({
                 編集
               </button>
             </div>
-            <div className="flex items-baseline justify-between font-mono text-xs">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-2 font-mono text-xs">
               <span className="text-sys-accent">{formatYen(savings.total)}</span>
               <span className="text-sys-muted">/ {formatYen(goal.targetAmount)} ({Math.floor(goalPct)}%)</span>
             </div>
@@ -371,6 +440,7 @@ export function SavingsPanel({
                 <input
                   className="sys-input"
                   inputMode="numeric"
+                  maxLength={12}
                   placeholder="目標金額 (円)"
                   value={goalAmount}
                   onChange={(e) => setGoalAmount(e.target.value)}
@@ -378,16 +448,21 @@ export function SavingsPanel({
                 <input
                   className="sys-input"
                   inputMode="numeric"
+                  maxLength={12}
                   placeholder="月間目標 (任意)"
                   value={goalMonthly}
                   onChange={(e) => setGoalMonthly(e.target.value)}
                 />
                 <input
                   className="sys-input"
+                  maxLength={20}
                   placeholder="用途 (例: 旅行)"
                   value={goalLabel}
                   onChange={(e) => setGoalLabel(e.target.value)}
                 />
+                {goalError && (
+                  <p className="text-[11px] text-sys-danger sm:col-span-3">{goalError}</p>
+                )}
                 <div className="flex gap-2 sm:col-span-3">
                   <button type="button" onClick={() => void handleSaveGoal()} className="sys-button sys-button-gold flex-1 justify-center !py-1.5 !text-xs">
                     目標を設定
@@ -414,9 +489,9 @@ export function SavingsPanel({
           <div className="grid grid-cols-3 gap-1.5">
             {(
               [
-                { id: 'deposit', label: '貯金 (預入)', icon: <PiggyBank className="h-3.5 w-3.5" /> },
+                { id: 'deposit', label: '貯金', icon: <PiggyBank className="h-3.5 w-3.5" /> },
                 { id: 'withdraw', label: '引き出し', icon: <TrendingUp className="h-3.5 w-3.5 rotate-180" /> },
-                { id: 'spending', label: 'カード利用', icon: <CreditCard className="h-3.5 w-3.5" /> },
+                { id: 'spending', label: 'カード', icon: <CreditCard className="h-3.5 w-3.5" /> },
               ] as const
             ).map((k) => (
               <button
@@ -438,23 +513,27 @@ export function SavingsPanel({
             <input
               type="date"
               className="sys-input"
+              max={todayKey()}
               value={entryDate}
               onChange={(e) => setEntryDate(e.target.value)}
             />
             <input
               className="sys-input"
               inputMode="numeric"
+              maxLength={12}
               placeholder="金額 (円)"
               value={entryAmount}
               onChange={(e) => setEntryAmount(e.target.value)}
             />
             <input
               className="sys-input sm:col-span-2"
+              maxLength={40}
               placeholder="メモ (任意)"
               value={entryMemo}
               onChange={(e) => setEntryMemo(e.target.value)}
             />
           </div>
+          {entryError && <p className="text-[11px] text-sys-danger">{entryError}</p>}
           <button
             type="button"
             onClick={() => void handleAddEntry()}
@@ -576,7 +655,7 @@ export function SavingsPanel({
                   編集
                 </button>
               </div>
-              <div className="flex items-baseline justify-between font-mono text-xs">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-2 font-mono text-xs">
                 <span className={overBudget ? 'text-sys-danger' : 'text-sys-accent'}>
                   {formatYen(savings.thisMonthSpent)}
                 </span>
@@ -601,25 +680,32 @@ export function SavingsPanel({
               )}
             </>
           ) : (
-            <div className="flex gap-2">
-              <input
-                className="sys-input flex-1"
-                inputMode="numeric"
-                placeholder="月間カード予算 (円)"
-                value={budgetAmount}
-                onChange={(e) => setBudgetAmount(e.target.value)}
-              />
-              <button type="button" onClick={() => void handleSaveBudget()} className="sys-button !py-1.5 !text-xs">
-                設定
-              </button>
-              {budgetEditing && (
-                <button
-                  type="button"
-                  onClick={() => setBudgetEditing(false)}
-                  className="sys-button !py-1.5 !text-xs"
-                >
-                  戻る
+            <div className="space-y-1.5">
+              <div className="flex gap-2">
+                <input
+                  className="sys-input flex-1"
+                  inputMode="numeric"
+                  maxLength={12}
+                  placeholder="月間カード予算 (円)"
+                  value={budgetAmount}
+                  onChange={(e) => setBudgetAmount(e.target.value)}
+                />
+                <button type="button" onClick={() => void handleSaveBudget()} className="sys-button !py-1.5 !text-xs">
+                  設定
                 </button>
+                {budgetEditing && (
+                  <button
+                    type="button"
+                    onClick={() => setBudgetEditing(false)}
+                    className="sys-button !py-1.5 !text-xs"
+                  >
+                    戻る
+                  </button>
+                )}
+              </div>
+              {budgetError && <p className="text-[11px] text-sys-danger">{budgetError}</p>}
+              {budgetEditing && (
+                <p className="text-[10px] text-sys-muted">空欄のまま「設定」で予算を解除</p>
               )}
             </div>
           )}
@@ -630,7 +716,7 @@ export function SavingsPanel({
               onClick={() => void claimBudgetReward()}
               className="sys-button sys-button-gold w-full justify-center"
             >
-              🛡️ {lastMonth} 予算内クリア! 報酬を受け取る (+{BUDGET_REWARD_GOLD} G / +{BUDGET_REWARD_EXP} EXP)
+              🛡️ 先月の予算クリア報酬 +{BUDGET_REWARD_GOLD}G / +{BUDGET_REWARD_EXP}EXP
             </button>
           )}
         </div>

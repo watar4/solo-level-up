@@ -42,6 +42,15 @@ export function walletGold(character: Pick<Character, 'gold'>): number {
   return Math.max(0, character.gold ?? 0);
 }
 
+// Compact display for gold readouts in tight HUD slots. Full precision up
+// to 6 digits, then 万/億 units so the number can never blow the layout.
+export function formatGold(n: number): string {
+  const v = Math.max(0, Math.floor(n));
+  if (v >= 100_000_000) return `${(v / 100_000_000).toFixed(1)}億`;
+  if (v >= 1_000_000) return `${Math.floor(v / 10_000)}万`;
+  return v.toLocaleString('ja-JP');
+}
+
 // ── Consumables catalog ────────────────────────────────────────────────
 //
 // Counts live on the character doc (`consumables[templateId]`), purchases

@@ -233,7 +233,7 @@ function ShadowCard({
           <p className="truncate text-sm font-bold text-sys-text">
             {stageDisplayName(shadow.name, shadowLevel(shadow))}
           </p>
-          <div className="mt-0.5 flex items-baseline gap-2">
+          <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
             <span className="font-mono text-[10px] text-sys-gold">
               Lv{shadowLevel(shadow)}
             </span>

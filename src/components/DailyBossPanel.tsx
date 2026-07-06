@@ -869,8 +869,8 @@ export function DailyBossPanel({
           ) : (
             <div className="space-y-4">
               {/* Floor indicator */}
-              <div className="flex items-center justify-between border border-sys-border/30 bg-black/30 px-3 py-2">
-                <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-y-1 border border-sys-border/30 bg-black/30 px-3 py-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <p className="text-[10px] uppercase tracking-widest text-sys-muted">
                     Tower Floor
                   </p>
