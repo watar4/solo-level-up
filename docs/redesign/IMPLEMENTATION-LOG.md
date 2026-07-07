@@ -113,7 +113,43 @@
 
 ---
 
+## Increment 4 — P3 キャラクリv2 ✅ 完了
+
+**方針:** 不満②「選択に意味がない・楽しみがない」の核心。見た目のパーツ制だけで終わらせず、**職業・信条・転職の効果を戦闘/成長に実配線**した(データだけにしない)。
+
+### 見た目(パーツ制アバター)
+
+- `lib/appearance.ts`:**24×24 レイヤー合成アバター**を描画プリミティブで生成。はだ6・かみがた8・かみいろ12・め4種・めのいろ8・アクセ6・衣装10(4職デフォルト+進捗解放6)。`renderAvatar` / `normalizeAppearance` / `migrateAppearance`(旧16×16→v2) / `randomAppearance`。
+- 全描画箇所(HUD・ステータス・戦闘・作成・クローゼット)を `renderClassSprite`→`renderAvatar` に置換。
+
+### 職業(ついに意味を持つ)
+
+- `lib/jobs.ts`:4職の成長ステータス・固有パッシブ・属性・奥義。**転職ツリー**(Lv20二次職/Lv40三次職、各分岐)。
+- **実配線**:
+  - 成長ボーナス=`classStatBonus`(装備ボーナスと同様に `effectiveStats` に派生加算。EXP巻き戻しでも破綻しない)。
+  - 固有パッシブ=engine `PlayerConfig` に `damageTakenMult/atbBonus/cooldownReduction/firstStrikeBreak` を追加して戦闘に適用。tierで強度スケール。
+  - 奥義=tierで倍率・名称が強化。
+
+### 信条
+
+- `lib/creeds.ts`:6信条。`questExpMultiplier`(朝型/夜型/一点突破+メダルEXP系)・`streakCapFor`(コツコツ+よっかめメダル)・`shopDiscountFor`(倹約家)・`extractionBonusFor`(収集家)を **`completeQuest`/`buyConsumable`/抽出ロールに実配線**。
+
+### UI
+
+- `CharacterCreation` を **4ステップ・ウィザード**に刷新(みため→しょくぎょう[レーダー]→しんじょう→なまえ、ライブプレビュー+ランダム)。`StatRadar` 追加。
+- `ClosetPanel`(旧 AppearanceEditor 置換):全パーツ変更+進捗解放の衣装。
+- `JobPanel`(ギルド):現職表示・転職・信条変更。
+- `StatusPanel`:職業/信条/成長ボーナス表示+`MedalCase`(12メダル)。
+- `useGameData`:`campaign`同様に `job/creed/cosmetics` を配線。`updateCreed`/`advanceJob` 追加。既存ユーザーの**マイグレーション**(load時に旧appearance→v2、job.base/creed 補完)。作成時に job/creed を種付け。
+
+### 検証
+
+- **64 ユニットテスト(全 green)**。新規 `character.test.ts`:アバター矩形/正規化/移行/乱数、成長ボーナスのレベルスケール、転職の解放ゲート、職業別・tier別コンバットmod、信条EXP倍率・上限・割引・抽出。
+- `tsc -b`・`npm run build` 成功。
+- **実ブラウザ確認**(pageerror 0)。証跡 `screenshots/`:`20-create-appearance`(パーツ)・`21-create-class`(レーダー+パッシブ)・`24-closet`(進捗解放衣装)・`25-job`(転職+信条、tier2パッシブ-12%)。
+
+---
+
 ## 次の増分(未着手)
 
-- **Increment 4 — P3 キャラクリv2**(パーツ式アバター・職業差別化の永続化・転職・信条・衣装)。
-- **Increment 5 — P5 仕上げ**(バランス調整・演出磨き・UI依存ギミック本実装・ED)。詳細は `07-implementation.md` §7。
+- **Increment 5 — P5 仕上げ**(バランス調整・演出磨き・UI依存ギミック本実装[mirror/fakeNotification/uiSleep]・ED)。詳細は `07-implementation.md` §7。

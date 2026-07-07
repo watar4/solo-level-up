@@ -26,10 +26,7 @@ import {
   getSkill,
 } from '../lib/battleSkills';
 import type { BattleSkill } from '../lib/battleSkills';
-import {
-  DEFAULT_APPEARANCE,
-  renderClassSprite,
-} from '../lib/playerSprites';
+import { renderAvatar } from '../lib/appearance';
 import { addBossAttempt } from '../lib/firestore';
 import {
   RARITY_COLOR,
@@ -223,8 +220,7 @@ export function DailyBossPanel({
   }, [log]);
 
   const playerSprite = useMemo(() => {
-    const a = character.appearance ?? DEFAULT_APPEARANCE;
-    return renderClassSprite(a.hunterClass, a.primaryColor, a.accentColor);
+    return renderAvatar(character.appearance ?? { hunterClass: 'knight', primaryColor: '#3a6abc', accentColor: '#c8d0d8' });
   }, [character.appearance]);
 
   const bossSprite = BOSS_SPRITES[boss.id] ?? FALLBACK_BOSS_SPRITE;

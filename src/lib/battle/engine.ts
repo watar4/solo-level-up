@@ -60,13 +60,20 @@ export interface PlayerSkill {
 export interface PlayerConfig {
   name: string;
   level: number;
-  stats: Record<StatKey, number>; // effective (base + weapon)
+  stats: Record<StatKey, number>; // effective (base + weapon + class growth)
   maxHp: number;
   primaryElement: Element;         // basic-attack element (from class)
   skills: PlayerSkill[];           // equipped, resolved
   hasRevive: boolean;              // phoenix feather held
   critBonus: number;               // flat crit add from medals
   burnResist: number;              // 0..1 dmg reduction on burn
+  // ----- job/class combat passives (lib/jobs.ts jobCombatMods) -----
+  damageTakenMult: number;         // ≤1: incoming-damage reduction (knight)
+  atbBonus: number;                // fraction added to ATB speed (hunter)
+  cooldownReduction: number;       // subtracted from skill cooldowns (mage)
+  firstStrikeBreak: number;        // extra break on first weakness hit (scout)
+  ultimatePower: number;           // ultimate damage multiplier (tier-scaled)
+  ultimateName: string;
 }
 
 export interface ShadowConfig {
@@ -96,6 +103,7 @@ export interface PlayerActor extends Actor {
   cooldowns: Record<string, number>; // skillId → turns left
   attackMod: number;                 // debuff/buff multiplier (from enemy)
   reviveAvailable: boolean;
+  firstStrikeUsed: boolean;          // scout first-strike break bonus consumed
 }
 
 export interface ShadowActor extends Actor {
@@ -201,13 +209,14 @@ export function createBattle(params: {
     hp: player.maxHp,
     maxHp: player.maxHp,
     atb: 0,
-    speed: atbSpeed(player.stats.AGI ?? 0),
+    speed: atbSpeed(player.stats.AGI ?? 0) * (1 + player.atbBonus),
     alive: true,
     statuses: [],
     guarding: false,
     cooldowns: {},
     attackMod: 1,
     reviveAvailable: player.hasRevive,
+    firstStrikeUsed: false,
   };
 
   const shadowActors: ShadowActor[] = shadows.map((s) => ({
@@ -399,7 +408,13 @@ export function playerAction(
     enemy.hp = Math.max(0, enemy.hp - dmg);
     events.push({ type: 'damage', target: 'enemy', amount: dmg, crit: res.crit, weak: aff === 'weak', resist: aff === 'resist' });
     if (aff === 'weak') {
-      const chip = chipBreak(enemy.break, breakDamage(true, mult >= 1.7));
+      // scout first-strike passive: extra break chips on the opening weakness hit
+      let chipAmt = breakDamage(true, mult >= 1.7);
+      if (!player.firstStrikeUsed && cfg.firstStrikeBreak > 0) {
+        chipAmt += cfg.firstStrikeBreak;
+        player.firstStrikeUsed = true;
+      }
+      const chip = chipBreak(enemy.break, chipAmt);
       enemy.break = chip.state;
       if (chip.justBroke) events.push({ type: 'break' });
     }
@@ -429,7 +444,8 @@ export function playerAction(
           critBonusFlat: skill.critBonusFlat,
         });
       }
-      if (skill.cooldown > 0) player.cooldowns = { ...player.cooldowns, [skill.id]: skill.cooldown };
+      const cd = Math.max(0, skill.cooldown - cfg.cooldownReduction);
+      if (cd > 0) player.cooldowns = { ...player.cooldowns, [skill.id]: cd };
       break;
     }
     case 'guard': {
@@ -453,9 +469,9 @@ export function playerAction(
     }
     case 'ultimate': {
       if (ultimate < ULTIMATE_READY) return { state, events };
-      events.push({ type: 'log', text: `おくぎ ${ultimateName(cfg.primaryElement)}!` });
+      events.push({ type: 'log', text: `おくぎ ${cfg.ultimateName}!` });
       const stat = ELEMENT_TO_STAT[cfg.primaryElement];
-      dealToEnemy(stat, 3.2, { critBonusFlat: 0.2 });
+      dealToEnemy(stat, cfg.ultimatePower, { critBonusFlat: 0.2 });
       // ultimate also chips break hard on a weakness
       if (affinity(cfg.primaryElement, enemy.element) === 'weak') {
         const chip = chipBreak(enemy.break, 2);
@@ -473,16 +489,6 @@ export function playerAction(
     events
   );
   return finished;
-}
-
-function ultimateName(element: Element): string {
-  switch (element) {
-    case 'go': return '剛剣・一文字';
-    case 'ma': return '星霜の詠唱';
-    case 'jin': return '追い風の連矢';
-    case 'shin': return '影縫い';
-    case 'shu': return '不動の一撃';
-  }
 }
 
 // ── Shadow turn ────────────────────────────────────────────────────────────
@@ -629,6 +635,7 @@ function applyEnemyMove(
     }
     let dmg = res.damage;
     if (player.guarding) dmg = Math.round(dmg * 0.55);
+    dmg = Math.max(1, Math.round(dmg * cfg.damageTakenMult)); // knight passive
     // wake the player if asleep and hit
     player.statuses = wakeOnHit(player.statuses);
     player.hp = Math.max(0, player.hp - dmg);

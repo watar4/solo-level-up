@@ -34,7 +34,8 @@ const ShadowArmyPanel    = lazy(() => import('./ShadowArmyPanel').then((m) => ({
 const DailyBossPanel     = lazy(() => import('./DailyBossPanel').then((m) => ({ default: m.DailyBossPanel })));
 const AdventurePanel     = lazy(() => import('./adventure/AdventurePanel').then((m) => ({ default: m.AdventurePanel })));
 const BattleSkillsPanel  = lazy(() => import('./BattleSkillsPanel').then((m) => ({ default: m.BattleSkillsPanel })));
-const AppearanceEditor   = lazy(() => import('./AppearanceEditor').then((m) => ({ default: m.AppearanceEditor })));
+const ClosetPanel        = lazy(() => import('./ClosetPanel').then((m) => ({ default: m.ClosetPanel })));
+const JobPanel           = lazy(() => import('./JobPanel').then((m) => ({ default: m.JobPanel })));
 const InventoryPanel     = lazy(() => import('./InventoryPanel').then((m) => ({ default: m.InventoryPanel })));
 const ApiKeysPanel       = lazy(() => import('./ApiKeysPanel').then((m) => ({ default: m.ApiKeysPanel })));
 const FocusGatePanel     = lazy(() => import('./FocusGatePanel').then((m) => ({ default: m.FocusGatePanel })));
@@ -53,7 +54,8 @@ import { rollShadowDrop, RARITY_LABEL } from '../lib/shadows';
 import { weaponStatBonus } from '../lib/items';
 import { formatGold, walletGold } from '../lib/economy';
 import { expForLevel, rankForLevel } from '../lib/leveling';
-import { DEFAULT_APPEARANCE, renderClassSprite } from '../lib/playerSprites';
+import { renderAvatar } from '../lib/appearance';
+import { classStatBonus } from '../lib/jobs';
 import type { Rank, StatKey } from '../types';
 import { isQuestDoneToday, useGameData } from '../hooks/useGameData';
 import { createQuest } from '../lib/firestore';
@@ -161,8 +163,7 @@ function HudBar({
   const need = expForLevel(character.level);
   const expPct = Math.min(100, (character.exp / need) * 100);
   const sprite = useMemo(() => {
-    const a = character.appearance ?? DEFAULT_APPEARANCE;
-    return renderClassSprite(a.hunterClass, a.primaryColor, a.accentColor);
+    return renderAvatar(character.appearance ?? { hunterClass: 'knight', primaryColor: '#3a6abc', accentColor: '#c8d0d8' });
   }, [character.appearance]);
 
   return (
@@ -238,6 +239,7 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
   const [shadowOpen, setShadowOpen] = useState(false);
   const [bossOpen, setBossOpen] = useState(false);
   const [adventureOpen, setAdventureOpen] = useState(false);
+  const [jobOpen, setJobOpen] = useState(false);
   const [battleSkillsOpen, setBattleSkillsOpen] = useState(false);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [inventoryOpen, setInventoryOpen] = useState(false);
@@ -260,15 +262,16 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
   // Real-world savings ledger (yen) — powers the 貯金 tab.
   const savingsData = useSavings(user.uid);
 
-  // Player effective stats = base + equipped weapon bonus.
+  // Player effective stats = base + equipped weapon bonus + class growth.
   const effectiveStats = useMemo<Record<StatKey, number>>(() => {
     const out: Record<StatKey, number> = { ...character.stats };
     const bonus = weaponStatBonus(itemsData.items);
-    for (const k of Object.keys(bonus) as StatKey[]) {
-      out[k] = (out[k] ?? 0) + (bonus[k] ?? 0);
+    const growth = classStatBonus(character);
+    for (const k of Object.keys(out) as StatKey[]) {
+      out[k] = (out[k] ?? 0) + (bonus[k] ?? 0) + (growth[k] ?? 0);
     }
     return out;
-  }, [character.stats, itemsData.items]);
+  }, [character.stats, character.level, character.job, character.appearance, itemsData.items]);
   // Explicit "what's being dragged" id, set the instant dnd-kit fires
   // onDragStart. Forwarded to each SortableQuestCard so the lift visual can
   // fire even if useSortable.isDragging propagates a tick late.
@@ -716,9 +719,15 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
                 />
                 <NavTile
                   Icon={Palette}
-                  label="外見編集"
-                  sublabel="appearance"
+                  label="クローゼット"
+                  sublabel="wardrobe"
                   onClick={() => setAppearanceOpen(true)}
+                />
+                <NavTile
+                  Icon={Award}
+                  label="ギルド / 転職"
+                  sublabel="job & creed"
+                  onClick={() => setJobOpen(true)}
                 />
                 {!game.isMaster && (
                   <NavTile
@@ -856,11 +865,18 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
           />
         )}
         {appearanceOpen && (
-          <AppearanceEditor
-            open={appearanceOpen}
-            current={character.appearance}
+          <ClosetPanel
+            character={character}
             onClose={() => setAppearanceOpen(false)}
             onSave={game.updateAppearance}
+          />
+        )}
+        {jobOpen && (
+          <JobPanel
+            character={character}
+            onClose={() => setJobOpen(false)}
+            onAdvance={game.advanceJob}
+            onChangeCreed={game.updateCreed}
           />
         )}
         {bossOpen && (

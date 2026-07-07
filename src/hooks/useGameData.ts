@@ -55,6 +55,9 @@ import {
 import { newlyUnlockedSkills, type SkillDef } from '../lib/skills';
 import { ensureCampaign, defaultCampaign, type CampaignState } from '../lib/story/campaign';
 import { earnWill } from '../lib/battle/will';
+import { questExpMultiplier, streakCapFor, shopDiscountFor, DEFAULT_CREED } from '../lib/creeds';
+import { migrateAppearance } from '../lib/appearance';
+import { JOB_BY_ID } from '../lib/jobs';
 
 export interface QuestEditPatch {
   title: string;
@@ -72,7 +75,7 @@ export interface GameData {
   busyQuestId: string | null;
   pendingEvents: SystemEvent[];
   popEvent: () => void;
-  createCharacterWithName: (name: string, appearance?: HunterAppearance) => Promise<void>;
+  createCharacterWithName: (name: string, appearance?: HunterAppearance, creed?: string) => Promise<void>;
   toggleQuest: (quest: Quest) => Promise<void>;
   removeQuestWithRefund: (quest: Quest) => Promise<void>;
   editQuest: (quest: Quest, patch: QuestEditPatch) => Promise<void>;
@@ -80,6 +83,9 @@ export interface GameData {
   reorderActive: (from: number, to: number) => Promise<void>;
   renameCharacter: (name: string) => Promise<void>;
   updateAppearance: (appearance: HunterAppearance) => Promise<void>;
+  updateCreed: (creed: string) => Promise<void>;
+  // Advance to a tier-2 (Lv20) or tier-3 (Lv40) job node.
+  advanceJob: (nodeId: string) => Promise<void>;
   setEquippedSkills: (skillIds: string[]) => Promise<void>;
   incrementBossesDefeated: () => Promise<void>;
   allocateStatPoint: (stat: StatKey) => Promise<void>;
@@ -151,9 +157,9 @@ const STAT_PER_DIFFICULTY: Record<string, number> = {
   S: 8,
 };
 
-function streakMultiplier(type: Quest['type'], streak: number): number {
+function streakMultiplier(type: Quest['type'], streak: number, cap = 2): number {
   if (type !== 'daily') return 1;
-  return Math.min(2, 1 + 0.1 * Math.max(0, streak - 1));
+  return Math.min(cap, 1 + 0.1 * Math.max(0, streak - 1));
 }
 
 function recomputeStreak(type: Quest['type'], remainingDates: string[]): number {
@@ -170,6 +176,17 @@ function recomputeStreak(type: Quest['type'], remainingDates: string[]): number 
 
 function ensureUnlocked(c: Character): UnlockState {
   return c.unlocked ?? EMPTY_UNLOCK;
+}
+
+// One-time upgrade of pre-v2 characters: expand the appearance to the parts
+// model, seed job.base from the old class, and default the creed. Returns the
+// patch to persist, or null when nothing needs migrating.
+function migrateCharacterFields(c: Character): Partial<Character> | null {
+  const patch: Partial<Character> = {};
+  if (c.appearance && !c.appearance.hair) patch.appearance = migrateAppearance(c.appearance);
+  if (!c.job) patch.job = { base: c.appearance?.hunterClass ?? 'knight' };
+  if (!c.creed) patch.creed = DEFAULT_CREED;
+  return Object.keys(patch).length ? patch : null;
 }
 
 function achievementEvent(a: AchievementDef): SystemEvent {
@@ -284,9 +301,21 @@ export function useGameData(user: User | null): GameData {
           if (cancelled) return;
           setCharacter(master);
           setNeedsCharacter(false);
+        } else if (c) {
+          const patch = migrateCharacterFields(c);
+          if (patch) {
+            const merged = { ...c, ...patch };
+            setCharacter(merged);
+            updateCharacter(user.uid, patch).catch((err) =>
+              console.error('[migrate] character upgrade failed', err)
+            );
+          } else {
+            setCharacter(c);
+          }
+          setNeedsCharacter(false);
         } else {
-          setCharacter(c);
-          setNeedsCharacter(!c);
+          setCharacter(null);
+          setNeedsCharacter(true);
         }
         setLoading(false);
       })
@@ -366,15 +395,22 @@ export function useGameData(user: User | null): GameData {
   }, [user, character?.uid, quests.length]);
 
   const createCharacterWithName = useCallback(
-    async (name: string, appearance?: HunterAppearance) => {
+    async (name: string, appearance?: HunterAppearance, creed?: string) => {
       if (!user) return;
       const c = await createCharacter(
         user.uid,
         name.trim() || 'Hunter',
         appearance
       );
-      setCharacter(c);
+      // Seed job (from chosen class) + creed alongside the base character.
+      const job = { base: appearance?.hunterClass ?? 'knight' as const };
+      const chosenCreed = creed ?? DEFAULT_CREED;
+      const withMeta: Character = { ...c, job, creed: chosenCreed };
+      setCharacter(withMeta);
       setNeedsCharacter(false);
+      updateCharacter(user.uid, { job, creed: chosenCreed }).catch((err) =>
+        console.error('[create] job/creed seed failed', err)
+      );
     },
     [user]
   );
@@ -390,7 +426,9 @@ export function useGameData(user: User | null): GameData {
             ? quest.streak + 1
             : 1
           : quest.streak;
-      const expGained = Math.round(baseExp * streakMultiplier(quest.type, newStreak));
+      const expMult = streakMultiplier(quest.type, newStreak, streakCapFor(character))
+        * questExpMultiplier(character, quest, new Date().getHours());
+      const expGained = Math.round(baseExp * expMult);
       const statGain = STAT_PER_DIFFICULTY[quest.difficulty] ?? 1;
       const goldGained = QUEST_GOLD[quest.difficulty];
 
@@ -503,7 +541,10 @@ export function useGameData(user: User | null): GameData {
       if (!user || !character) return;
       const today = todayKey();
       const baseExp = DIFFICULTY_EXP[quest.difficulty];
-      const expRefund = Math.round(baseExp * streakMultiplier(quest.type, quest.streak));
+      const expRefund = Math.round(
+        baseExp * streakMultiplier(quest.type, quest.streak, streakCapFor(character))
+          * questExpMultiplier(character, quest, new Date().getHours())
+      );
       const statRefund = STAT_PER_DIFFICULTY[quest.difficulty] ?? 1;
 
       const newDates = quest.completedDates.filter((d) => d !== today);
@@ -711,6 +752,30 @@ export function useGameData(user: User | null): GameData {
       if (!user || !character) return;
       await updateCharacter(user.uid, { appearance });
       setCharacter({ ...character, appearance });
+    },
+    [user, character]
+  );
+
+  const updateCreed = useCallback(
+    async (creed: string): Promise<void> => {
+      if (!user || !character) return;
+      setCharacter({ ...character, creed });
+      await updateCharacter(user.uid, { creed });
+    },
+    [user, character]
+  );
+
+  const advanceJob = useCallback(
+    async (nodeId: string): Promise<void> => {
+      if (!user || !character) return;
+      const node = JOB_BY_ID[nodeId];
+      if (!node) return;
+      const base = character.job?.base ?? character.appearance?.hunterClass ?? 'knight';
+      const job = { ...(character.job ?? { base }), base };
+      if (node.tier === 2) job.tier2 = nodeId;
+      else if (node.tier === 3) job.tier3 = nodeId;
+      setCharacter({ ...character, job });
+      await updateCharacter(user.uid, { job });
     },
     [user, character]
   );
@@ -938,13 +1003,14 @@ export function useGameData(user: User | null): GameData {
       if (!user || !character) return false;
       const template = getConsumable(consumableId);
       if (!template) return false;
+      const price = Math.round(template.price * (1 - shopDiscountFor(character))); // 倹約家 creed
       const wallet = character.gold ?? 0;
-      if (wallet < template.price) return false;
+      if (wallet < price) return false;
       const consumables = {
         ...(character.consumables ?? {}),
         [consumableId]: (character.consumables?.[consumableId] ?? 0) + 1,
       };
-      const newGold = wallet - template.price;
+      const newGold = wallet - price;
       setCharacter({ ...character, gold: newGold, consumables });
       try {
         await updateCharacter(user.uid, { gold: newGold, consumables });
@@ -1195,6 +1261,8 @@ export function useGameData(user: User | null): GameData {
     reorderActive,
     renameCharacter,
     updateAppearance,
+    updateCreed,
+    advanceJob,
     setEquippedSkills,
     incrementBossesDefeated,
     allocateStatPoint,

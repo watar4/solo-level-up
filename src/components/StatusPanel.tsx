@@ -5,7 +5,11 @@ import { expForLevel, rankForLevel } from '../lib/leveling';
 import { SystemWindow } from './SystemWindow';
 import { WeightPanel } from './WeightPanel';
 import { PixelArt } from './PixelArt';
-import { DEFAULT_APPEARANCE, renderClassSprite } from '../lib/playerSprites';
+import { renderAvatar } from '../lib/appearance';
+import { classStatBonus, resolveJobNode, CLASS_INFO, baseClass } from '../lib/jobs';
+import { CREED_BY_ID, type CreedId } from '../lib/creeds';
+import { MedalCase } from './MedalCase';
+import type { MedalId } from '../lib/story/medals';
 import { Palette, Pencil, Plus } from 'lucide-react';
 
 interface Props {
@@ -47,9 +51,13 @@ export function StatusPanel({
   const inputRef = useRef<HTMLInputElement>(null);
 
   const sprite = useMemo(() => {
-    const a = character.appearance ?? DEFAULT_APPEARANCE;
-    return renderClassSprite(a.hunterClass, a.primaryColor, a.accentColor);
+    return renderAvatar(character.appearance ?? { hunterClass: 'knight', primaryColor: '#3a6abc', accentColor: '#c8d0d8' });
   }, [character.appearance]);
+
+  const growth = useMemo(() => classStatBonus(character), [character.level, character.job, character.appearance]);
+  const jobNode = resolveJobNode(character);
+  const classInfo = CLASS_INFO[baseClass(character)];
+  const creed = character.creed ? CREED_BY_ID[character.creed as CreedId] : undefined;
 
   useEffect(() => {
     if (editing) {
@@ -155,6 +163,11 @@ export function StatusPanel({
               </span>
             )}
           </div>
+          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-sys-muted">
+            <span className="rounded-sm border border-sys-border/50 px-1.5 py-0.5 text-sys-text/80">{jobNode.name}</span>
+            {creed && <span className="rounded-sm border border-sys-border/50 px-1.5 py-0.5">信条:{creed.jp}</span>}
+            <span>{classInfo.passiveDesc}</span>
+          </div>
           </div>
         </div>
 
@@ -191,6 +204,9 @@ export function StatusPanel({
               <div className="flex items-center gap-2">
                 <span className="font-mono text-xl font-bold text-sys-text">
                   {character.stats[s]}
+                  {(growth[s] ?? 0) > 0 && (
+                    <span className="ml-1 align-top text-[10px] font-normal text-sys-accent">+{growth[s]}</span>
+                  )}
                 </span>
                 {character.statPoints > 0 && (
                   <button
@@ -206,6 +222,10 @@ export function StatusPanel({
               </div>
             </div>
           ))}
+        </div>
+
+        <div className="border-t border-sys-border/20 pt-4">
+          <MedalCase owned={(character.campaign?.medals ?? []) as MedalId[]} />
         </div>
 
         <div className="border-t border-sys-border/20 pt-4">

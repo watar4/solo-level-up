@@ -334,9 +334,10 @@ export function extractionChance(input: ExtractionInput): number {
 
 export function rollExtraction(
   input: ExtractionInput,
-  rng: () => number = Math.random
+  rng: () => number = Math.random,
+  bonus = 0 // creed/medal extraction-odds bonus (lib/creeds.ts)
 ): ExtractionResult {
-  const successChance = extractionChance(input);
+  const successChance = Math.max(0.08, Math.min(0.95, extractionChance(input) + bonus));
   const success = rng() < successChance;
 
   // Rarity quality scales with the same successChance — high-rank players

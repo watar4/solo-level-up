@@ -7,8 +7,9 @@ import { effectiveEquippedSkills, getSkill, type BattleSkill } from '../battleSk
 import { shadowCombatPower } from '../shadowGrowth';
 import { consumableCount } from '../economy';
 import { sumMedalPassive, type MedalId } from '../story/medals';
-import { CLASS_ELEMENT, type PlayerConfig, type PlayerSkill, type ShadowConfig } from './engine';
+import { type PlayerConfig, type PlayerSkill, type ShadowConfig } from './engine';
 import { STAT_TO_ELEMENT } from './elements';
+import { CLASS_INFO, baseClass, jobCombatMods } from '../jobs';
 
 function toPlayerSkill(s: BattleSkill): PlayerSkill {
   if (s.effect.kind === 'heal') {
@@ -31,7 +32,8 @@ export function buildPlayerConfig(
   effectiveStats: Record<StatKey, number>,
   medals: MedalId[]
 ): PlayerConfig {
-  const cls = character.appearance?.hunterClass ?? 'knight';
+  const cls = baseClass(character);
+  const mods = jobCombatMods(character);
   const baseHp = playerMaxHp(effectiveStats, character.level);
   const maxHp = Math.round(baseHp * (1 + sumMedalPassive(medals, 'maxHp')));
   const skills = effectiveEquippedSkills(character)
@@ -44,11 +46,17 @@ export function buildPlayerConfig(
     level: character.level,
     stats: effectiveStats,
     maxHp,
-    primaryElement: CLASS_ELEMENT[cls] ?? 'go',
+    primaryElement: CLASS_INFO[cls].element,
     skills,
     hasRevive: consumableCount(character, 'phoenix-feather') > 0,
     critBonus: sumMedalPassive(medals, 'critChance'),
     burnResist: sumMedalPassive(medals, 'burnResist'),
+    damageTakenMult: mods.damageTakenMult,
+    atbBonus: mods.atbBonus,
+    cooldownReduction: mods.cooldownReduction,
+    firstStrikeBreak: mods.firstStrikeBreak,
+    ultimatePower: mods.ultimatePower,
+    ultimateName: mods.ultimateName,
   };
 }
 

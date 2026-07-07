@@ -43,8 +43,24 @@ export type HunterClass = 'knight' | 'mage' | 'hunter' | 'scout';
 
 export interface HunterAppearance {
   hunterClass: HunterClass;
-  primaryColor: string; // hex — outfit/weapon main color
-  accentColor: string;  // hex — accent (cape/hood/etc.)
+  primaryColor: string; // hex — outfit main color
+  accentColor: string;  // hex — accent (trim/pants/etc.)
+  // ----- v2 parts (optional on legacy docs; migrateAppearance backfills) -----
+  skin?: string;        // skin color hex
+  hair?: string;        // hairstyle id
+  hairColor?: string;   // hex
+  eyes?: string;        // eye style id
+  eyeColor?: string;    // hex
+  outfit?: string;      // outfit id (shape + default colors)
+  accessory?: string;   // accessory id ('none' | ...)
+}
+
+// Job/class progression. `base` is the starting class; tier2 unlocks at Lv20,
+// tier3 at Lv40 (see lib/jobs.ts).
+export interface HunterJob {
+  base: HunterClass;
+  tier2?: string;
+  tier3?: string;
 }
 
 export interface Character {
@@ -61,6 +77,10 @@ export interface Character {
   title?: string;     // currently-equipped title from an achievement
   weightTarget?: number; // kg, one decimal — drives target line on the chart
   appearance?: HunterAppearance;
+  // ----- job / creed / cosmetics (キャラクリ v2) -----
+  job?: HunterJob;         // class progression (base + tier2/tier3)
+  creed?: string;          // playstyle creed id (lib/creeds.ts); changeable
+  cosmetics?: string[];    // owned cosmetic ids (outfits/accessories)
   // IDs of battle skills the player has equipped (max 5, used in combat).
   // Distinct from the achievement-style "unlocked.skills" tags above.
   equippedSkills?: string[];

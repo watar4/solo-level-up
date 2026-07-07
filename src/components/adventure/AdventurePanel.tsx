@@ -19,8 +19,9 @@ import { buildPlayerConfig, buildShadowConfigs } from '../../lib/battle/loadout'
 import { enemyMaxHp } from '../../lib/battle/engine';
 import { canFight, spendWill, refundOnFirstLordLoss, type BattleKind } from '../../lib/battle/will';
 import { rollExtraction } from '../../lib/boss';
+import { extractionBonusFor } from '../../lib/creeds';
 import { SHADOW_TEMPLATES } from '../../lib/shadows';
-import { renderClassSprite, DEFAULT_APPEARANCE } from '../../lib/playerSprites';
+import { renderAvatar } from '../../lib/appearance';
 import { CONSUMABLES, consumableCount } from '../../lib/economy';
 import { effectiveStreak } from '../../lib/leveling';
 
@@ -95,11 +96,8 @@ export function AdventurePanel(props: Props) {
   const region = regionFor(chapter);
   const clearedIds = campaign.clearedNodes[chapter] ?? [];
 
-  const appearance = character.appearance ?? DEFAULT_APPEARANCE;
-  const playerSprite = renderClassSprite(
-    appearance.hunterClass,
-    appearance.primaryColor,
-    appearance.accentColor
+  const playerSprite = renderAvatar(
+    character.appearance ?? { hunterClass: 'knight', primaryColor: '#3a6abc', accentColor: '#c8d0d8' }
   );
 
   const battleItems = useMemo(
@@ -176,7 +174,7 @@ export function AdventurePanel(props: Props) {
           intelligence: effectiveStats.INT,
           floor: chapter,
           bossHpScaled: enemyMaxHp(enemyDef, cfg, equippedShadows.length),
-        });
+        }, Math.random, extractionBonusFor(character));
         if (roll.success) {
           const template = SHADOW_TEMPLATES.find(
             (t) => t.stat === roll.stat && t.rarity === roll.rarity

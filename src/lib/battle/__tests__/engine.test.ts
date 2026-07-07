@@ -23,6 +23,12 @@ const basePlayer: PlayerConfig = {
   hasRevive: false,
   critBonus: 0,
   burnResist: 0,
+  damageTakenMult: 1,
+  atbBonus: 0,
+  cooldownReduction: 0,
+  firstStrikeBreak: 0,
+  ultimatePower: 3.2,
+  ultimateName: 'テスト奥義',
 };
 
 function enemy(partial: Partial<EnemyDef>): EnemyDef {
