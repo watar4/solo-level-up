@@ -14,7 +14,7 @@ import type { ProgressSnapshot } from '../../lib/story/chapterGate';
 import { MEDAL_BY_CHAPTER } from '../../lib/story/medals';
 import { getDialogue, type DialogueLine } from '../../lib/story/dialogue';
 import { getEnemy } from '../../lib/enemies/registry';
-import { enemySprite } from '../../lib/enemies/sprites';
+import { spriteFor } from '../../lib/enemies/sprites';
 import { buildPlayerConfig, buildShadowConfigs } from '../../lib/battle/loadout';
 import { enemyMaxHp } from '../../lib/battle/engine';
 import { canFight, spendWill, refundOnFirstLordLoss, type BattleKind } from '../../lib/battle/will';
@@ -262,7 +262,7 @@ export function AdventurePanel(props: Props) {
         shadowConfigs={buildShadowConfigs(equippedShadows)}
         enemy={enemyDef}
         playerSprite={playerSprite}
-        enemySprite={enemySprite(activeNode.enemyId)}
+        enemySprite={spriteFor(enemyDef)}
         isLord={activeNode.kind === 'lord'}
         items={battleItems}
         onUseConsumable={props.onUseConsumable}

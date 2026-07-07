@@ -1,6 +1,8 @@
 // Region node maps — docs/redesign/03-battle-system.md §2, 04 §3.
-// A chapter's region is an ordered list of nodes the player walks through.
-// Node ids are stable so cleared-state survives data edits.
+// Chapter 1 is hand-authored; chapters 2-12 are generated from the enemy roster
+// (3 mobs → elite → lord) so content scales with the data files.
+
+import { ALL_ENEMIES } from '../enemies/registry';
 
 export type RegionNode =
   | { kind: 'event'; id: string; label: string; dialogueId: string }
@@ -27,15 +29,34 @@ const CH01: Region = {
   ],
 };
 
+function buildRegion(chapter: number): Region {
+  const es = ALL_ENEMIES.filter((e) => e.chapter === chapter);
+  const mobs = es.filter((e) => e.tier === 'mob');
+  const elite = es.find((e) => e.tier === 'elite');
+  const lord = es.find((e) => e.tier === 'lord' || e.tier === 'king');
+
+  const nodes: RegionNode[] = [
+    { kind: 'event', id: `ch${chapter}-intro`, label: 'たどりつく', dialogueId: `ch${chapter}-intro` },
+    ...mobs.map((m, i): RegionNode => ({ kind: 'battle', id: `ch${chapter}-b${i + 1}`, label: m.name, enemyId: m.id })),
+  ];
+  if (elite) nodes.push({ kind: 'elite', id: `ch${chapter}-elite`, label: elite.name, enemyId: elite.id });
+  nodes.push({ kind: 'event', id: `ch${chapter}-prelord`, label: 'ボスの間の前', dialogueId: `ch${chapter}-prelord` });
+  if (lord) nodes.push({ kind: 'lord', id: `ch${chapter}-lord`, label: lord.name, enemyId: lord.id });
+
+  return { chapter, nodes };
+}
+
 export const REGIONS: Record<number, Region> = {
   1: CH01,
+  ...Object.fromEntries(
+    Array.from({ length: 11 }, (_, i) => i + 2).map((ch) => [ch, buildRegion(ch)])
+  ),
 };
 
 export function regionFor(chapter: number): Region | undefined {
   return REGIONS[chapter];
 }
 
-// The next uncleared node in a region, or null if the whole region is done.
 export function nextNode(region: Region, clearedIds: string[]): RegionNode | null {
   const cleared = new Set(clearedIds);
   return region.nodes.find((n) => !cleared.has(n.id)) ?? null;

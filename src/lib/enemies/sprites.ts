@@ -1,4 +1,6 @@
 import type { PixelGrid, PixelPalette } from '../../components/PixelArt';
+import type { EnemyDef } from './types';
+import { buildKitSprite } from './spriteKit';
 
 // Enemy sprites (Daramon) — docs/redesign/06-boss-design.md §2. Cute, harmless
 // silhouettes; main colour follows the enemy's element so affinity reads at a
@@ -155,4 +157,12 @@ export const FALLBACK_ENEMY_SPRITE: EnemySprite = {
 
 export function enemySprite(id: string): EnemySprite {
   return ENEMY_SPRITES[id] ?? FALLBACK_ENEMY_SPRITE;
+}
+
+// Resolve the sprite for an enemy: hand-drawn art (chapter 1) wins, otherwise
+// compose a kit sprite from the enemy's shape + element. Falls back gracefully.
+export function spriteFor(def: EnemyDef): EnemySprite {
+  if (ENEMY_SPRITES[def.id]) return ENEMY_SPRITES[def.id];
+  if (def.shape) return buildKitSprite(def.shape, def.element);
+  return FALLBACK_ENEMY_SPRITE;
 }

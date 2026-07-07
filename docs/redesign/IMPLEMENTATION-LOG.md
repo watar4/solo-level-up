@@ -85,8 +85,35 @@
 
 ---
 
+## Increment 3 — P4 コンテンツ量産(2〜12章) ✅ 完了
+
+**方針:** 60体を手描きせず、**スプライトキット(形状テンプレ×属性色)+データ駆動ファクトリ**で量産し、全12章の整合性を自動テストで担保。
+
+### 追加したもの
+
+| 領域 | 内容 |
+|---|---|
+| 敵データ | `enemies/ch02.ts`〜`ch12.ts`(各5体=**55体**)。`enemies/factory.ts`(章スケール自動)+`mv`(行動コンストラクタ)で簡潔に宣言 |
+| スプライト | `enemies/spriteKit.ts`:描画プリミティブで10形状(blob/ghost/beast/bird/bug/golem/serpent/crystal/slime/cat)を生成→属性色で着色。`sprites.spriteFor(def)` が第1章は手描き・以降はキットを解決 |
+| 地方 | `story/regions.ts`:2〜12章をロスターから自動生成(雑魚3→中ボス→幹部) |
+| 会話 | `story/dialogue/rest.ts`:各章 intro/prelord/lord-clear。カイン堕落・バルガス過去・アリア正体などの伏線を配置 |
+| ギミック | `battle/engine.ts` に純粋ギミック実装:buffEater(4章)/goldScatter(5章)/darkening(7章)/triTurnReset(8章)/selfBurn(10章)/nullify(11章)。UI依存の mirror/fakeNotification/uiSleep は自己バフに degrade(後の増分で本演出) |
+| 登録 | `enemies/registry.ts` に全12章を統合、`dialogue/index.ts` に会話を統合 |
+
+### 検証
+
+- **54 ユニットテスト(全 green)**。新規の**コンテンツ整合テスト**:全章に地方あり/全ノードが実敵・実会話を参照/幹部IDが `chapters.ts` と一致/全55体が整形済み(スプライト矩形)/**Lv60ハンターが全12幹部をエンジンで撃破**(全ギミックがクラッシュ/詰みなく通ることを保証)。
+- `tsc -b`・`npm run build` 成功。
+- **実ブラウザ確認**:全12章が選択可能、第5章の戦闘でキット生成スプライト(コゼニトリ=迅属性の緑鳥)描画、pageerror 0。証跡:`screenshots/10-worldmap-all.png`・`12-battle-ch5-kit.png`。
+
+### 設計判断メモ
+
+- スプライトはキット生成(形状10×属性5=最大50通り+手描き第1章)。第1章の主要敵のみ手描きで、以降は量産効率を優先。将来、要所の幹部を手描きで差し替え可能(`ENEMY_SPRITES` に id 登録すれば `spriteFor` が優先)。
+- バランスは「hpTurns(プレイヤー火力比)×章別攻撃スケール」。詳細な数値調整は P5 に委ねる。
+
+---
+
 ## 次の増分(未着手)
 
-- **Increment 3 — P3 キャラクリv2**(パーツ式アバター・職業差別化の永続化・転職・信条・衣装)。
-- **Increment 4 — P4 コンテンツ量産(2〜12章:敵60体・会話・スプライト・ギミック本実装)。**
-- **Increment 5 — P5 仕上げ**(バランス調整・演出磨き・ED)。詳細は `07-implementation.md` §7。
+- **Increment 4 — P3 キャラクリv2**(パーツ式アバター・職業差別化の永続化・転職・信条・衣装)。
+- **Increment 5 — P5 仕上げ**(バランス調整・演出磨き・UI依存ギミック本実装・ED)。詳細は `07-implementation.md` §7。

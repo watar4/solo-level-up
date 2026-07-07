@@ -8,6 +8,14 @@ import type { StatusId } from '../battle/status';
 
 export type EnemyTier = 'mob' | 'elite' | 'lord' | 'king';
 
+// Sprite shape family — chapter 1 uses hand-drawn sprites (enemies/sprites.ts);
+// chapters 2+ compose a shape template with the enemy's element colour via the
+// sprite kit (enemies/spriteKit.ts), so 55 enemies get distinct-enough art
+// without hand-authoring every grid.
+export type EnemyShape =
+  | 'blob' | 'ghost' | 'beast' | 'bird' | 'bug'
+  | 'golem' | 'serpent' | 'crystal' | 'slime' | 'cat';
+
 // Sprite grid sizes by tier (docs 06 §1). Actual art lives in enemies/sprites/
 // and is produced during the content phase; the id links the two.
 export const TIER_SPRITE_SIZE: Record<EnemyTier, 16 | 24 | 32> = {
@@ -78,6 +86,7 @@ export interface EnemyDef {
   moves: EnemyMove[];
   phases?: number;            // 1 (default) or 2 for lords
   gimmick?: GimmickId;
+  shape?: EnemyShape;         // sprite template for kit-composed art (ch2+)
   lore: string;               // dex entry
   loreAfter: string;          // dex entry unlocked after defeat (改心後の近況)
   quotes?: { open?: string; phase2?: string; defeat?: string };

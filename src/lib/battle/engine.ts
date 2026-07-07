@@ -675,17 +675,40 @@ function applyEnemyMove(
   return { enemy, player };
 }
 
-// Gimmick hook. Chapter 1 uses none; a couple of self-contained ones are wired
-// so later chapters only need data. Unknown gimmicks degrade gracefully.
+// Gimmick hook (docs 06 §5). Pure-state gimmicks are implemented here; the
+// UI-heavy ones (fakeNotification / mirror / uiSleep) degrade to a small self
+// buff so those fights stay playable until a later increment wires their
+// presentation. Mutates the passed enemy/player copies in place.
 function applyGimmick(enemy: EnemyActor, player: PlayerActor, events: BattleEvent[]): void {
   switch (enemy.def.gimmick) {
-    case 'triTurnReset':
+    case 'triTurnReset': // ch8: undo all resettable buffs/debuffs/statuses
       enemy.statuses = cleanseResettable(enemy.statuses);
       enemy.attackMod = 1;
       player.attackMod = 1;
       events.push({ type: 'log', text: 'すべてが なかったことに なった!' });
       break;
+    case 'buffEater': // ch4: steal the player's edge
+      enemy.attackMod = Math.min(2, enemy.attackMod + 0.25);
+      player.attackMod = Math.max(0.5, player.attackMod - 0.15);
+      break;
+    case 'goldScatter': // ch5: rattle the player (cosmetic gold drain in the fiction)
+      player.attackMod = Math.max(0.5, player.attackMod - 0.1);
+      break;
+    case 'darkening': // ch7: the fight gets darker, accuracy slips (stacks)
+      player.attackMod = Math.max(0.4, player.attackMod - 0.1);
+      break;
+    case 'nullify': // ch11: "it's meaningless" — strips the player's power
+      player.attackMod = Math.max(0.4, player.attackMod - 0.2);
+      break;
+    case 'selfBurn': // ch10: spend own HP to power up hard
+      enemy.hp = Math.max(1, enemy.hp - Math.round(enemy.maxHp * 0.08));
+      enemy.attackMod = Math.min(2.2, enemy.attackMod + 0.4);
+      break;
+    case 'mirror':
+    case 'fakeNotification':
+    case 'uiSleep':
     default:
+      enemy.attackMod = Math.min(2, enemy.attackMod + 0.15);
       break;
   }
 }
