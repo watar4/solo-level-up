@@ -33,7 +33,7 @@ export const CH12_ENEMIES: EnemyDef[] = [
   c.lord('gutara', 'サボり魔王グータラ', 'go', {
     shape: 'golem',
     gimmick: 'uiSleep',
-    hpTurns: 22,
+    hpTurns: 14,
     breakGauge: 7,
     moves: [mv.atk(3), mv.gimmick(2, 'あくびが うつる…画面が zzz'), mv.charge(2, 'おおきく のびを している…'), mv.unleash(2.6, '百年の あくび!'), mv.p2(3, 1.9, '……はっ、起きた!本気!')],
     lore: '百年寝ていた初代ハンター。「もう頑張らなくていい」と囁く虚無の王。',

@@ -35,10 +35,13 @@ interface EnemyOpts {
 // derived from player power via hpTurns, so it needs no chapter scaling).
 export function makeChapter(chapter: number) {
   const atk = (t: EnemyTier) =>
-    t === 'mob' ? 4 + Math.round(chapter * 1.6)
-      : t === 'elite' ? 7 + Math.round(chapter * 2.2)
+    t === 'mob' ? 4 + Math.round(chapter * 1.3)
+      : t === 'elite' ? 6 + Math.round(chapter * 2.1)
         : 8 + Math.round(chapter * 2.6);
-  const hp = (t: EnemyTier) => (t === 'mob' ? 3 : t === 'elite' ? 9 : 16);
+  // hpTurns = "turns of the player's full output". Tuned against the HP/damage
+  // curve so an attack-spam floor wins with margin at recommended+3, while real
+  // play (guard/heal/items/shadows) makes it comfortable earlier.
+  const hp = (t: EnemyTier) => (t === 'mob' ? 3 : t === 'elite' ? 6 : 10);
   const brk = (t: EnemyTier) => (t === 'mob' ? 0 : t === 'elite' ? 4 : 6);
   const ag = (t: EnemyTier) => (t === 'mob' ? 8 : t === 'elite' ? 6 : 9);
 

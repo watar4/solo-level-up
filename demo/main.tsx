@@ -42,9 +42,13 @@ const mockQuests: Quest[] = [
 ];
 
 function Demo() {
+  // #finale seeds chapters 1-11 cleared so only the final chapter (+ending)
+  // remains to drive.
+  const finale = window.location.hash === '#finale';
   const [campaign, setCampaign] = useState<CampaignState>({
     ...defaultCampaign(today),
     will: { stock: 3, earnedToday: 0, date: today },
+    ...(finale ? { chapter: 12, clearedChapters: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], medals: ['hayaoki', 'kyouyaru', 'shuuchuu', 'harahachi', 'kotsukotsu', 'undou', 'oyasumi', 'yokkame', 'homeru', 'bochibochi', 'ippozutsu'] } : {}),
   });
 
   return (

@@ -33,7 +33,7 @@ export const CH06_ENEMIES: EnemyDef[] = [
   c.lord('ugokazaru', '山になった巨人ウゴカザール', 'shu', {
     shape: 'golem',
     breakGauge: 8,
-    hpTurns: 20,
+    hpTurns: 13,
     moves: [mv.atk(3, 1.1, 'いわ落とし'), mv.charge(2, 'ゆっくり ふりかぶる…'), mv.unleash(2.6, '地ひびき!'), mv.p2(2, 1.6, '山が うごいた!')],
     lore: '休憩が100年続いた巨人。ブレイクでしか大きく崩せない。',
     loreAfter: '毎朝のラジオ体操の音頭役に(山が体操する絵面)。',

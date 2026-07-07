@@ -7,9 +7,10 @@ import { WorldMapScene } from './WorldMapScene';
 import { RegionMapScene } from './RegionMapScene';
 import { StoryDialog } from './StoryDialog';
 import { BattleScene } from './BattleScene';
+import { EndingScene } from './EndingScene';
 import type { CampaignState } from '../../lib/story/campaign';
 import { regionFor, isRegionComplete, type RegionNode } from '../../lib/story/regions';
-import { CHAPTER_BY_ID } from '../../lib/story/chapters';
+import { CHAPTER_BY_ID, FINAL_CHAPTER } from '../../lib/story/chapters';
 import type { ProgressSnapshot } from '../../lib/story/chapterGate';
 import { MEDAL_BY_CHAPTER } from '../../lib/story/medals';
 import { getDialogue, type DialogueLine } from '../../lib/story/dialogue';
@@ -40,7 +41,7 @@ interface Props {
   onClose: () => void;
 }
 
-type View = 'world' | 'region' | 'dialogue' | 'battle' | 'result';
+type View = 'world' | 'region' | 'dialogue' | 'battle' | 'result' | 'ending';
 
 interface ResultData {
   won: boolean;
@@ -239,9 +240,10 @@ export function AdventurePanel(props: Props) {
     const r = result;
     setResult(null);
     if (r?.won && r.isLordClear) {
+      const finale = r.chapter === FINAL_CHAPTER;
       setDialogue({
         lines: getDialogue(`ch${r.chapter}-lord-clear`),
-        onDone: () => setView('world'),
+        onDone: () => setView(finale ? 'ending' : 'world'),
       });
       setView('dialogue');
       return;
@@ -254,14 +256,16 @@ export function AdventurePanel(props: Props) {
     const enemyDef = getEnemy(activeNode.enemyId);
     if (!enemyDef) { setView('region'); return null; }
     const cfg = buildPlayerConfig(character, effectiveStats, campaign.medals);
+    const isMirror = enemyDef.gimmick === 'mirror';
     return (
       <BattleScene
         playerConfig={cfg}
         shadowConfigs={buildShadowConfigs(equippedShadows)}
         enemy={enemyDef}
         playerSprite={playerSprite}
-        enemySprite={spriteFor(enemyDef)}
+        enemySprite={isMirror ? playerSprite : spriteFor(enemyDef)}
         isLord={activeNode.kind === 'lord'}
+        isMirror={isMirror}
         items={battleItems}
         onUseConsumable={props.onUseConsumable}
         onEnd={handleBattleEnd}
@@ -271,6 +275,21 @@ export function AdventurePanel(props: Props) {
 
   if (view === 'dialogue' && dialogue) {
     return <StoryDialog lines={dialogue.lines} onDone={dialogue.onDone} />;
+  }
+
+  if (view === 'ending') {
+    return (
+      <EndingScene
+        stats={{
+          level: character.level,
+          totalExp: character.totalExp,
+          medals: campaign.medals.length,
+          defeated: campaign.defeatedEnemies.length,
+          streak: snapshot.bestStreak,
+        }}
+        onClose={() => setView('world')}
+      />
+    );
   }
 
   const title =

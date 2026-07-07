@@ -140,6 +140,8 @@ export interface BattleState {
 
 // ── Events emitted for the UI ─────────────────────────────────────────────
 
+export type GimmickFx = 'fakeNotification' | 'uiSleep';
+
 export type BattleEvent =
   | { type: 'log'; text: string }
   | { type: 'damage'; target: string; amount: number; crit: boolean; weak: boolean; resist: boolean }
@@ -148,7 +150,8 @@ export type BattleEvent =
   | { type: 'break' }
   | { type: 'phase2' }
   | { type: 'charge' }
-  | { type: 'ultimate-ready' }
+  | { type: 'ultimate' }
+  | { type: 'fx'; fx: GimmickFx }
   | { type: 'miss'; target: string }
   | { type: 'defeat'; target: string }
   | { type: 'win' }
@@ -234,6 +237,11 @@ export function createBattle(params: {
   }));
 
   const maxHp = enemyMaxHp(enemy, player, companionCount);
+  // Mirror gimmick (ch9 ネガミラー): the enemy is a copy of YOU — it takes the
+  // player's element (so your own affinity gives no easy weakness) and hits
+  // scaled from the player's own power.
+  const mirror = enemy.gimmick === 'mirror';
+  const topStat = Math.max(...(Object.values(player.stats) as number[]));
   const enemyActor: EnemyActor = {
     key: 'enemy',
     name: enemy.name,
@@ -243,8 +251,8 @@ export function createBattle(params: {
     speed: atbSpeed(enemy.agility),
     alive: true,
     statuses: [],
-    element: enemy.element,
-    attack: enemy.attack,
+    element: mirror ? player.primaryElement : enemy.element,
+    attack: mirror ? Math.max(enemy.attack, Math.round(topStat * 0.35)) : enemy.attack,
     critChance: enemy.critChance,
     playerLevel: player.level,
     break: initBreak(enemy.breakGauge),
@@ -369,7 +377,8 @@ export type PlayerAction =
   | { kind: 'skill'; skillId: string }
   | { kind: 'guard' }
   | { kind: 'item'; effect: { type: 'heal'; percent: number } | { type: 'attack-boost'; multiplier: number } | { type: 'revive'; percent: number } }
-  | { kind: 'ultimate' };
+  | { kind: 'ultimate' }
+  | { kind: 'wait' }; // turn wasted (e.g. tapping a fake notification, ch3)
 
 export const ULTIMATE_READY = 100;
 
@@ -454,6 +463,10 @@ export function playerAction(
       ultimate = Math.min(ULTIMATE_READY, ultimate + 5);
       break;
     }
+    case 'wait': {
+      events.push({ type: 'log', text: 'つい 通知を みてしまった… 1ターン むだにした!' });
+      break;
+    }
     case 'item': {
       const e = action.effect;
       if (e.type === 'heal') {
@@ -469,6 +482,7 @@ export function playerAction(
     }
     case 'ultimate': {
       if (ultimate < ULTIMATE_READY) return { state, events };
+      events.push({ type: 'ultimate' });
       events.push({ type: 'log', text: `おくぎ ${cfg.ultimateName}!` });
       const stat = ELEMENT_TO_STAT[cfg.primaryElement];
       dealToEnemy(stat, cfg.ultimatePower, { critBonusFlat: 0.2 });
@@ -711,9 +725,14 @@ function applyGimmick(enemy: EnemyActor, player: PlayerActor, events: BattleEven
       enemy.hp = Math.max(1, enemy.hp - Math.round(enemy.maxHp * 0.08));
       enemy.attackMod = Math.min(2.2, enemy.attackMod + 0.4);
       break;
-    case 'mirror':
-    case 'fakeNotification':
-    case 'uiSleep':
+    case 'fakeNotification': // ch3: pop a fake notification the player must ignore
+      events.push({ type: 'fx', fx: 'fakeNotification' });
+      break;
+    case 'uiSleep': // ch12: the UI drifts to sleep (zzz)
+      events.push({ type: 'fx', fx: 'uiSleep' });
+      enemy.attackMod = Math.min(2, enemy.attackMod + 0.1);
+      break;
+    case 'mirror': // ch9: handled at battle setup (enemy copies the player)
     default:
       enemy.attackMod = Math.min(2, enemy.attackMod + 0.15);
       break;

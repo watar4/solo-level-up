@@ -41,6 +41,7 @@ interface Props {
   playerSprite: { grid: PixelGrid; palette: PixelPalette };
   enemySprite: { grid: PixelGrid; palette: PixelPalette };
   isLord: boolean;
+  isMirror?: boolean; // ch9: enemy is a copy of the player
   items: UsableItem[];
   onUseConsumable: (id: string) => Promise<boolean>;
   onEnd: (won: boolean, turnsUsed: number) => void;
@@ -65,6 +66,11 @@ export function BattleScene(props: Props) {
   const [menu, setMenu] = useState<'root' | 'skill' | 'item'>('root');
   const [items, setItems] = useState<UsableItem[]>(props.items);
   const [shake, setShake] = useState(false);
+  const [cutin, setCutin] = useState<string | null>(null);
+  const [fakeNotif, setFakeNotif] = useState(false);
+  const [uiAsleep, setUiAsleep] = useState(false);
+  const [enemyFlash, setEnemyFlash] = useState(false);
+  const [critFlash, setCritFlash] = useState(false);
 
   const ingest = (events: BattleEvent[]) => {
     const newLogs: string[] = [];
@@ -78,6 +84,8 @@ export function BattleScene(props: Props) {
           const tone: Popup['tone'] = e.crit ? 'crit' : e.weak ? 'weak' : 'dmg';
           newPopups.push({ id: popupSeq.current++, target: e.target, text: `${e.amount}${e.weak ? ' 弱点!' : ''}`, tone });
           if (e.target === 'player' && e.amount > 0) setShake(true);
+          if (e.target === 'enemy' && e.amount > 0) setEnemyFlash(true);
+          if (e.crit) setCritFlash(true);
           break;
         }
         case 'heal':
@@ -88,6 +96,13 @@ export function BattleScene(props: Props) {
           break;
         case 'break':
           newLogs.push('やぶれかぶれ! ブレイク!');
+          break;
+        case 'ultimate':
+          setCutin(cfgRef.current.ultimateName);
+          break;
+        case 'fx':
+          if (e.fx === 'fakeNotification') setFakeNotif(true);
+          if (e.fx === 'uiSleep') setUiAsleep(true);
           break;
         default:
           break;
@@ -127,6 +142,11 @@ export function BattleScene(props: Props) {
     const t = setTimeout(() => setShake(false), 260);
     return () => clearTimeout(t);
   }, [shake]);
+  useEffect(() => { if (!enemyFlash) return; const t = setTimeout(() => setEnemyFlash(false), 140); return () => clearTimeout(t); }, [enemyFlash]);
+  useEffect(() => { if (!critFlash) return; const t = setTimeout(() => setCritFlash(false), 170); return () => clearTimeout(t); }, [critFlash]);
+  useEffect(() => { if (!cutin) return; const t = setTimeout(() => setCutin(null), 1000); return () => clearTimeout(t); }, [cutin]);
+  useEffect(() => { if (!fakeNotif) return; const t = setTimeout(() => setFakeNotif(false), 2800); return () => clearTimeout(t); }, [fakeNotif]);
+  useEffect(() => { if (!uiAsleep) return; const t = setTimeout(() => setUiAsleep(false), 2500); return () => clearTimeout(t); }, [uiAsleep]);
 
   const act = (action: PlayerAction) => {
     const s = stateRef.current;
@@ -160,6 +180,57 @@ export function BattleScene(props: Props) {
 
   return (
     <div className="fixed inset-0 z-[60] flex flex-col bg-gradient-to-b from-[#101a33] to-[#04070f]">
+      {/* crit screen flash */}
+      <AnimatePresence>
+        {critFlash && (
+          <motion.div key="crit" initial={{ opacity: 0.5 }} animate={{ opacity: 0 }} exit={{ opacity: 0 }}
+            transition={{ duration: 0.17 }} className="pointer-events-none absolute inset-0 z-[70] bg-white" />
+        )}
+      </AnimatePresence>
+
+      {/* ultimate cut-in */}
+      <AnimatePresence>
+        {cutin && (
+          <motion.div key="cutin" initial={{ x: '-110%' }} animate={{ x: '0%' }} exit={{ opacity: 0 }}
+            transition={{ type: 'spring', stiffness: 200, damping: 22 }}
+            className="pointer-events-none absolute inset-x-0 top-1/3 z-[71] flex items-center gap-2 border-y-2 border-sys-accent bg-[#0a0f1c]/90 px-4 py-3">
+            <span className="text-2xl">✦</span>
+            <span className="text-lg font-black text-sys-accent drop-shadow">{cutin}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* UI-sleep (ch12) drifting zzz */}
+      {uiAsleep && (
+        <div className="pointer-events-none absolute inset-0 z-[68] bg-[#04070f]/30">
+          {['z', 'z', 'z'].map((z, i) => (
+            <motion.span key={i} initial={{ opacity: 0, y: 0 }} animate={{ opacity: [0, 1, 0], y: -40 }}
+              transition={{ duration: 2.2, delay: i * 0.3, repeat: Infinity }}
+              className="absolute text-2xl font-black text-sky-200/70" style={{ left: `${30 + i * 12}%`, top: `${45 + i * 5}%` }}>
+              {z.toUpperCase()}zz…
+            </motion.span>
+          ))}
+        </div>
+      )}
+
+      {/* fake notification (ch3) — tap wastes a turn, ignore it to win */}
+      <AnimatePresence>
+        {fakeNotif && (
+          <motion.button
+            key="notif" type="button"
+            initial={{ y: -60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -60, opacity: 0 }}
+            onClick={() => { act({ kind: 'wait' }); setFakeNotif(false); }}
+            className="absolute inset-x-3 top-3 z-[72] flex items-center gap-3 rounded-xl border border-white/20 bg-[#1c1c22]/95 p-3 text-left shadow-lg"
+          >
+            <span className="text-xl">🔔</span>
+            <span className="min-w-0">
+              <span className="block text-xs font-bold text-white">おしらせ</span>
+              <span className="block truncate text-[11px] text-white/70">タップして つづきを みる →(ワナ!)</span>
+            </span>
+          </motion.button>
+        )}
+      </AnimatePresence>
+
       {/* Enemy stage */}
       <motion.div
         className="relative flex flex-1 flex-col items-center justify-center gap-2 pt-6"
@@ -179,7 +250,12 @@ export function BattleScene(props: Props) {
           <motion.div
             animate={{ y: [0, -3, 0] }}
             transition={{ repeat: Infinity, duration: 1.6 }}
-            style={{ opacity: s.enemy.alive ? 1 : 0.25, filter: s.enemy.break.broken ? 'brightness(1.4) saturate(1.4)' : 'none' }}
+            style={{
+              opacity: s.enemy.alive ? 1 : 0.25,
+              filter: enemyFlash
+                ? 'brightness(3) saturate(0)'
+                : s.enemy.break.broken ? 'brightness(1.4) saturate(1.4)' : 'none',
+            }}
           >
             <PixelArt
               layers={[enemySprite]}
@@ -192,7 +268,9 @@ export function BattleScene(props: Props) {
 
         <div className="w-full max-w-sm px-4">
           <div className="flex items-center justify-between text-xs">
-            <span className="font-bold text-sys-text">{enemy.name}</span>
+            <span className="font-bold text-sys-text">
+              {enemy.name}{props.isMirror && <span className="ml-1 text-[10px] text-sys-muted">(あなたの コピー)</span>}
+            </span>
             <span className="flex items-center gap-1">
               <ElementBadge element={enemy.element} />
               <span className="text-[10px] text-sys-muted">
