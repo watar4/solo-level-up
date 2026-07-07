@@ -1,5 +1,5 @@
 import { useEffect, useReducer, useRef, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { PixelArt, type PixelGrid, type PixelPalette } from '../PixelArt';
 import {
   createBattle,
@@ -17,7 +17,8 @@ import {
 } from '../../lib/battle/engine';
 import { SHADOW_ROLE_LABEL } from '../../lib/shadows';
 import type { EnemyDef } from '../../lib/enemies/types';
-import type { StatusId } from '../../lib/battle/status';
+import { STATUS_DEFS, type StatusId } from '../../lib/battle/status';
+import { ATB_TARGET } from '../../lib/battle/formulas';
 import {
   ELEMENT_LABELS,
   ELEMENT_COLORS,
@@ -71,7 +72,8 @@ export function BattleScene(props: Props) {
     enemy.quotes?.open ? [enemy.quotes.open] : []
   );
   const [popups, setPopups] = useState<Popup[]>([]);
-  const [menu, setMenu] = useState<'root' | 'skill' | 'item' | 'tactic'>('root');
+  const [menu, setMenu] = useState<'root' | 'skill' | 'item' | 'tactic' | 'flee'>('root');
+  const reducedMotion = useReducedMotion();
   const [items, setItems] = useState<UsableItem[]>(props.items);
   const [shake, setShake] = useState(false);
   const [cutin, setCutin] = useState<string | null>(null);
@@ -110,7 +112,9 @@ export function BattleScene(props: Props) {
           break;
         case 'revive':
           // The feather is a held consumable — burn it now that it fired.
-          void props.onUseConsumable('phoenix-feather');
+          props.onUseConsumable('phoenix-feather').catch((err) =>
+            console.error('[battle] feather consume failed', err)
+          );
           break;
         case 'fx':
           if (e.fx === 'fakeNotification') setFakeNotif(true);
@@ -205,6 +209,15 @@ export function BattleScene(props: Props) {
     force();
   };
 
+  // Forfeit the battle (counts as a loss; spent Will is not returned). The
+  // only sanctioned way out of a fight — without it a mistaken lord entry is
+  // a hard dead-end.
+  const flee = () => {
+    if (endedRef.current) return;
+    endedRef.current = true;
+    props.onEnd(false, stateRef.current.turnNumber);
+  };
+
   const s = stateRef.current;
   const enemyHpPct = Math.max(0, (s.enemy.hp / s.enemy.maxHp) * 100);
   const playerHpPct = Math.max(0, (s.player.hp / s.player.maxHp) * 100);
@@ -216,10 +229,16 @@ export function BattleScene(props: Props) {
   const awaiting = s.phase === 'awaiting-input';
 
   return (
-    <div className="fixed inset-0 z-[60] flex flex-col bg-gradient-to-b from-[#101a33] to-[#04070f]">
-      {/* crit screen flash */}
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={`${enemy.name} とのたたかい`}
+      className="fixed inset-0 z-[60] flex flex-col overflow-y-auto bg-gradient-to-b from-[#101a33] to-[#04070f]"
+    >
+      {/* crit screen flash — suppressed for prefers-reduced-motion
+          (full-screen white flashes are a photosensitivity risk) */}
       <AnimatePresence>
-        {critFlash && (
+        {critFlash && !reducedMotion && (
           <motion.div key="crit" initial={{ opacity: 0.5 }} animate={{ opacity: 0 }} exit={{ opacity: 0 }}
             transition={{ duration: 0.17 }} className="pointer-events-none absolute inset-0 z-[70] bg-white" />
         )}
@@ -276,8 +295,8 @@ export function BattleScene(props: Props) {
 
       {/* Enemy stage */}
       <motion.div
-        className="relative flex flex-1 flex-col items-center justify-center gap-2 pt-6"
-        animate={shake ? { x: [0, -6, 6, -4, 4, 0] } : { x: 0 }}
+        className="relative flex min-h-0 flex-1 flex-col items-center justify-center gap-2 pt-6"
+        animate={shake && !reducedMotion ? { x: [0, -6, 6, -4, 4, 0] } : { x: 0 }}
         transition={{ duration: 0.26 }}
       >
         {s.enemy.charged && (
@@ -348,7 +367,7 @@ export function BattleScene(props: Props) {
 
       {/* Battle log */}
       <div className="mx-auto min-h-[3.2rem] w-full max-w-sm px-4">
-        <div className="rounded-sm border border-sys-border/40 bg-black/40 px-3 py-1.5">
+        <div aria-live="polite" className="rounded-sm border border-sys-border/40 bg-black/40 px-3 py-1.5">
           {log.slice(-2).map((line, i) => (
             <p key={`${line}-${i}`} className="text-[11px] leading-snug text-sys-text">
               {line}
@@ -371,11 +390,20 @@ export function BattleScene(props: Props) {
             </div>
             <Bar pct={playerHpPct} className="from-emerald-500 to-green-400" />
             <div className="mt-1 flex items-center gap-1">
-              <span className="text-[8px] uppercase text-sys-muted">奥義</span>
+              <span className="w-7 text-[10px] text-sys-muted">奥義</span>
               <div className="h-1.5 flex-1 overflow-hidden rounded-sm bg-black/40">
                 <div
                   className="h-full bg-gradient-to-r from-cyan-500 to-sky-300"
                   style={{ width: `${(s.ultimate / ULTIMATE_READY) * 100}%` }}
+                />
+              </div>
+            </div>
+            <div className="mt-0.5 flex items-center gap-1">
+              <span className="w-7 text-[10px] text-sys-muted">行動</span>
+              <div className="h-1.5 flex-1 overflow-hidden rounded-sm bg-black/40">
+                <div
+                  className="h-full bg-gradient-to-r from-amber-500 to-yellow-300"
+                  style={{ width: `${Math.min(100, (s.player.atb / ATB_TARGET) * 100)}%` }}
                 />
               </div>
             </div>
@@ -414,6 +442,18 @@ export function BattleScene(props: Props) {
               onClick={() => act({ kind: 'ultimate' })}
             />
             {s.shadows.length > 0 && <Cmd label="さくせん" onClick={() => setMenu('tactic')} />}
+            <Cmd label="にげる" onClick={() => setMenu('flee')} />
+          </div>
+        )}
+        {awaiting && menu === 'flee' && (
+          <div className="space-y-2">
+            <p className="text-center text-[12px] text-sys-text">
+              にげますか? つかった戦意は もどりません。
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <Cmd label="にげる" onClick={flee} />
+              <Cmd label="たたかいつづける" onClick={() => setMenu('root')} />
+            </div>
           </div>
         )}
         {awaiting && menu === 'tactic' && (
@@ -452,7 +492,7 @@ export function BattleScene(props: Props) {
           </div>
         )}
         {!awaiting && s.phase === 'ticking' && (
-          <p className="text-center text-[11px] text-sys-muted">…</p>
+          <p className="text-center text-[11px] text-sys-muted">じゅんびちゅう…</p>
         )}
       </div>
     </div>
@@ -473,7 +513,8 @@ function Cmd({ label, onClick, disabled, highlight }: { label: string; onClick: 
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`sys-button py-2 text-xs ${highlight ? 'sys-button-gold' : ''} ${disabled ? 'opacity-40' : ''}`}
+      // min-h-11 ≈ 44px: commands are tapped rapidly under time pressure.
+      className={`sys-button min-h-11 py-2.5 text-xs ${highlight ? 'sys-button-gold' : ''} ${disabled ? 'opacity-40' : ''}`}
     >
       {label}
     </button>
@@ -497,7 +538,15 @@ function StatusChips({ statuses }: { statuses: StatusId[] }) {
   return (
     <div className="mt-1 flex flex-wrap gap-1">
       {statuses.filter((s) => (seen.has(s) ? false : (seen.add(s), true))).map((s) => (
-        <span key={s} className="text-[11px]" title={s}>{STATUS_ICON[s]}</span>
+        <span
+          key={s}
+          className="rounded-sm bg-black/30 px-1 text-[10px] text-sys-text"
+          title={STATUS_DEFS[s].jp}
+          aria-label={STATUS_DEFS[s].jp}
+        >
+          {STATUS_ICON[s]}
+          <span className="ml-0.5">{STATUS_DEFS[s].jp}</span>
+        </span>
       ))}
     </div>
   );

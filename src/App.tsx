@@ -1,3 +1,4 @@
+import { MotionConfig } from 'framer-motion';
 import { useAuth } from './hooks/useAuth';
 import { useGameData } from './hooks/useGameData';
 import { LoginScreen } from './components/LoginScreen';
@@ -5,6 +6,17 @@ import { CharacterCreation } from './components/CharacterCreation';
 import { Dashboard } from './components/Dashboard';
 
 export default function App() {
+  // reducedMotion="user" makes every framer-motion animation respect the OS
+  // prefers-reduced-motion setting (the CSS override in index.css cannot reach
+  // framer's rAF/WAAPI-driven inline styles).
+  return (
+    <MotionConfig reducedMotion="user">
+      <AppBody />
+    </MotionConfig>
+  );
+}
+
+function AppBody() {
   const auth = useAuth();
   const game = useGameData(auth.user);
 

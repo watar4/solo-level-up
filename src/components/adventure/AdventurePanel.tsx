@@ -26,6 +26,7 @@ import { weekKeyForDate } from '../../lib/leveling';
 import { useMeals } from '../../hooks/useMeals';
 import { useWeights } from '../../hooks/useWeights';
 import { useSavings } from '../../hooks/useSavings';
+import { usePanelDialog } from '../../hooks/usePanelDialog';
 import { firebaseReady } from '../../firebase';
 import { SHADOW_TEMPLATES } from '../../lib/shadows';
 import { renderAvatar } from '../../lib/appearance';
@@ -56,6 +57,9 @@ interface ResultData {
   shadowName?: string;
   isLordClear: boolean;
   chapter: number;
+  wasLord: boolean;        // the fight was a lord battle (for defeat hints)
+  willRefunded: boolean;   // first-lord-loss refund fired
+  saveFailed: boolean;     // a reward write failed mid-chain
 }
 
 const NODE_KIND_TO_BATTLE: Record<'battle' | 'elite' | 'lord', BattleKind> = {
@@ -76,6 +80,13 @@ export function AdventurePanel(props: Props) {
   const [dialogue, setDialogue] = useState<{ lines: DialogueLine[]; onDone: () => void } | null>(null);
   const [result, setResult] = useState<ResultData | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+
+  // Dialog semantics for the panel shell. Escape closes only on the browsing
+  // views — never mid-battle/dialogue/ending (those render their own roots).
+  const shellDialog = usePanelDialog(
+    props.onClose,
+    view === 'world' || view === 'region' || view === 'result'
+  );
 
   // Real data sources for the feature-linked chapter gates (meals → ch4,
   // savings → ch5, weight → ch6). Subscribed only while the panel is open,
@@ -140,7 +151,8 @@ export function AdventurePanel(props: Props) {
 
   const flash = (msg: string) => {
     setNotice(msg);
-    setTimeout(() => setNotice((n) => (n === msg ? null : n)), 1800);
+    // ~20 JP chars need more than a blink to read.
+    setTimeout(() => setNotice((n) => (n === msg ? null : n)), 3200);
   };
 
   const addClearedNode = (camp: CampaignState, ch: number, nodeId: string): CampaignState => {
@@ -154,13 +166,18 @@ export function AdventurePanel(props: Props) {
     setView('region');
   };
 
-  const handleSelectNode = (node: RegionNode) => {
+  const handleSelectNode = async (node: RegionNode) => {
     setActiveNode(node);
     if (node.kind === 'event') {
       setDialogue({
         lines: getDialogue(node.dialogueId),
         onDone: async () => {
-          await props.onSaveCampaign(addClearedNode(campaign, chapter, node.id));
+          try {
+            await props.onSaveCampaign(addClearedNode(campaign, chapter, node.id));
+          } catch (err) {
+            console.error('[adventure] event save failed', err);
+            flash('通信に しっぱいした。もういちど ためして。');
+          }
           setView('region');
         },
       });
@@ -178,93 +195,111 @@ export function AdventurePanel(props: Props) {
       flash('戦意が たりない。クエストを こなそう。');
       return;
     }
-    // Spend Will up-front (persist), then enter battle.
-    void props.onSaveCampaign({ ...campaign, will: spendWill(campaign.will, kind) });
+    // Spend Will BEFORE entering battle — and only enter if the spend stuck.
+    // Fire-and-forget here would let the battle start, then the rollback
+    // silently resurrect the Will counter mid-fight.
+    try {
+      await props.onSaveCampaign({ ...campaign, will: spendWill(campaign.will, kind) });
+    } catch (err) {
+      console.error('[adventure] will spend failed', err);
+      flash('通信に しっぱいした。もういちど ためして。');
+      return;
+    }
     setView('battle');
   };
 
+  // Invoked from a setTimeout inside BattleScene — an unhandled rejection here
+  // would strand the player on the victory banner forever, so every await
+  // lives inside the try and the result screen is ALWAYS shown.
   const handleBattleEnd = async (won: boolean, _turns: number) => {
     const node = activeNode;
     if (!node || node.kind === 'event') { setView('region'); return; }
     const kind = NODE_KIND_TO_BATTLE[node.kind];
     const enemyDef = getEnemy(node.enemyId);
+    const wasLord = kind === 'lord';
     let camp = campaign;
+    let gold = 0;
+    let shadowName: string | undefined;
+    let medalName: string | undefined;
+    let isLordClear = false;
+    let willRefunded = false;
+    let saveFailed = false;
 
-    if (won) {
-      // こつこつメダル (goldGain): battle gold only — quest gold stays flat so
-      // the uncheck refund remains exact.
-      const goldMult = 1 + sumMedalPassive(campaign.medals, 'goldGain');
-      const gold = Math.round(goldFor(kind, chapter) * goldMult);
-      await props.onAwardGold(gold);
-      await props.onShadowGrowth(chapter);
+    try {
+      if (won) {
+        // こつこつメダル (goldGain): battle gold only — quest gold stays flat
+        // so the uncheck refund remains exact.
+        const goldMult = 1 + sumMedalPassive(campaign.medals, 'goldGain');
+        gold = Math.round(goldFor(kind, chapter) * goldMult);
+        await props.onAwardGold(gold);
+        await props.onShadowGrowth(chapter);
 
-      let shadowName: string | undefined;
-      if ((kind === 'elite' || kind === 'lord') && enemyDef) {
-        const cfg = buildPlayerConfig(character, effectiveStats, campaign.medals);
-        const roll = rollExtraction({
-          playerLevel: character.level,
-          perception: effectiveStats.PER,
-          intelligence: effectiveStats.INT,
-          floor: chapter,
-          bossHpScaled: enemyMaxHp(enemyDef, cfg, equippedShadows.length),
-        }, Math.random, extractionBonusFor(character));
-        if (roll.success) {
-          const template = SHADOW_TEMPLATES.find(
-            (t) => t.stat === roll.stat && t.rarity === roll.rarity
-          );
-          if (template) {
-            const created = await props.onAwardShadow(template.id);
-            shadowName = created?.name ?? template.name;
+        if ((kind === 'elite' || kind === 'lord') && enemyDef) {
+          const cfg = buildPlayerConfig(character, effectiveStats, campaign.medals);
+          const roll = rollExtraction({
+            playerLevel: character.level,
+            perception: effectiveStats.PER,
+            intelligence: effectiveStats.INT,
+            floor: chapter,
+            bossHpScaled: enemyMaxHp(enemyDef, cfg, equippedShadows.length),
+          }, Math.random, extractionBonusFor(character));
+          if (roll.success) {
+            const template = SHADOW_TEMPLATES.find(
+              (t) => t.stat === roll.stat && t.rarity === roll.rarity
+            );
+            if (template) {
+              const created = await props.onAwardShadow(template.id);
+              shadowName = created?.name ?? template.name;
+            }
           }
         }
-      }
 
-      camp = addClearedNode(camp, chapter, node.id);
-      if (!camp.defeatedEnemies.includes(node.enemyId)) {
-        camp = { ...camp, defeatedEnemies: [...camp.defeatedEnemies, node.enemyId] };
-      }
+        camp = addClearedNode(camp, chapter, node.id);
+        if (!camp.defeatedEnemies.includes(node.enemyId)) {
+          camp = { ...camp, defeatedEnemies: [...camp.defeatedEnemies, node.enemyId] };
+        }
 
-      let medalName: string | undefined;
-      const isLordClear = kind === 'lord';
-      if (isLordClear) {
-        const medal = MEDAL_BY_CHAPTER[chapter];
-        if (medal && !camp.medals.includes(medal.id)) {
-          camp = { ...camp, medals: [...camp.medals, medal.id] };
-          medalName = medal.jp;
-          props.onEnqueueEvent({
-            id: `medal:${medal.id}:${Date.now()}`,
-            kind: 'achievement',
-            title: 'メダル獲得',
-            primary: medal.jp,
-            secondary: medal.desc,
-            icon: '🏅',
-            accent: 'gold',
-          });
+        isLordClear = wasLord;
+        if (isLordClear) {
+          const medal = MEDAL_BY_CHAPTER[chapter];
+          if (medal && !camp.medals.includes(medal.id)) {
+            camp = { ...camp, medals: [...camp.medals, medal.id] };
+            medalName = medal.jp;
+            props.onEnqueueEvent({
+              id: `medal:${medal.id}:${Date.now()}`,
+              kind: 'achievement',
+              title: 'メダル獲得',
+              primary: medal.jp,
+              secondary: medal.desc,
+              icon: '🏅',
+              accent: 'gold',
+            });
+          }
+          if (!camp.clearedChapters.includes(chapter)) {
+            camp = { ...camp, clearedChapters: [...camp.clearedChapters, chapter], chapter: chapter + 1 };
+          }
+          if (!camp.lordAttempts.includes(node.enemyId)) {
+            camp = { ...camp, lordAttempts: [...camp.lordAttempts, node.enemyId] };
+          }
         }
-        if (!camp.clearedChapters.includes(chapter)) {
-          camp = { ...camp, clearedChapters: [...camp.clearedChapters, chapter], chapter: chapter + 1 };
-        }
-        if (!camp.lordAttempts.includes(node.enemyId)) {
-          camp = { ...camp, lordAttempts: [...camp.lordAttempts, node.enemyId] };
-        }
-      }
 
-      await props.onSaveCampaign(camp);
-      setResult({ won: true, gold, medalName, shadowName, isLordClear, chapter });
-      setView('result');
-      return;
+        await props.onSaveCampaign(camp);
+      } else if (wasLord && !camp.lordAttempts.includes(node.enemyId)) {
+        // Loss — first-attempt lord refund.
+        willRefunded = true;
+        camp = {
+          ...camp,
+          will: refundOnFirstLordLoss(camp.will),
+          lordAttempts: [...camp.lordAttempts, node.enemyId],
+        };
+        await props.onSaveCampaign(camp);
+      }
+    } catch (err) {
+      console.error('[adventure] battle-end save failed', err);
+      saveFailed = true;
     }
 
-    // Loss — first-attempt lord refund.
-    if (kind === 'lord' && !camp.lordAttempts.includes(node.enemyId)) {
-      camp = {
-        ...camp,
-        will: refundOnFirstLordLoss(camp.will),
-        lordAttempts: [...camp.lordAttempts, node.enemyId],
-      };
-      await props.onSaveCampaign(camp);
-    }
-    setResult({ won: false, gold: 0, isLordClear: false, chapter });
+    setResult({ won, gold, medalName, shadowName, isLordClear, chapter, wasLord, willRefunded, saveFailed });
     setView('result');
   };
 
@@ -321,7 +356,9 @@ export function AdventurePanel(props: Props) {
           defeated: campaign.defeatedEnemies.length,
           streak: snapshot.bestStreak,
         }}
-        onClose={() => setView('world')}
+        // 「明日のクエストへ」 must actually land on the quest screen — close
+        // the whole adventure panel, not just this scene.
+        onClose={props.onClose}
       />
     );
   }
@@ -332,21 +369,26 @@ export function AdventurePanel(props: Props) {
         : CHAPTER_BY_ID[chapter]?.title ?? '冒険';
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-[#04070f]/97 p-4" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 5rem)' }}>
+    <div
+      {...shellDialog}
+      className="fixed inset-0 z-50 overflow-y-auto bg-[#04070f]/97 p-4 outline-none"
+      style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 5rem)' }}
+      aria-label="冒険"
+    >
       <div className="mx-auto max-w-xl">
         <div className="mb-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             {view === 'region' && (
-              <button type="button" onClick={() => setView('world')} className="text-sys-muted hover:text-sys-text" aria-label="もどる">←</button>
+              <button type="button" onClick={() => setView('world')} className="-m-2 p-2 text-sys-muted hover:text-sys-text" aria-label="大陸マップへ もどる">←</button>
             )}
             <Swords className="h-4 w-4 text-sys-accent" />
             <h2 className="sys-title text-base">{title}</h2>
           </div>
-          <div className="flex items-center gap-3">
-            <span className="flex items-center gap-1 text-xs text-sys-text" title="戦意">
-              ⚔️ {campaign.will.stock}/3
+          <div className="flex items-center gap-2">
+            <span className="flex items-center gap-1 rounded-sm border border-sys-border/40 px-1.5 py-0.5 text-xs text-sys-text" title="戦意:クエスト達成でたまる 出撃コスト">
+              <span className="text-[10px] text-sys-muted">戦意</span> {campaign.will.stock}/3
             </span>
-            <button type="button" onClick={props.onClose} className="text-sys-muted hover:text-sys-text" aria-label="とじる">
+            <button type="button" onClick={props.onClose} className="-m-2 p-2 text-sys-muted hover:text-sys-text" aria-label="とじる">
               <X className="h-5 w-5" />
             </button>
           </div>
@@ -354,6 +396,7 @@ export function AdventurePanel(props: Props) {
 
         {notice && (
           <motion.div
+            role="status"
             initial={{ opacity: 0, y: -6 }}
             animate={{ opacity: 1, y: 0 }}
             className="mb-3 rounded-md border border-rose-500/50 bg-rose-500/10 px-3 py-2 text-center text-xs text-rose-200"
@@ -396,8 +439,22 @@ export function AdventurePanel(props: Props) {
             ) : (
               <>
                 <p className="text-lg font-black text-rose-300">やられてしまった…</p>
+                {result.wasLord && (
+                  <p className="text-xs text-sys-text">
+                    推奨 Lv{CHAPTER_BY_ID[result.chapter]?.recommendedLevel ?? '?'} ―― あなたは Lv{character.level}。
+                    弱点属性の スキルと ブレイクが 有効。
+                  </p>
+                )}
+                {result.willRefunded && (
+                  <p className="text-xs text-amber-300">はじめての 幹部戦 ―― 戦意 1 が 返還された。</p>
+                )}
                 <p className="text-xs text-sys-muted">クエストで レベルと 戦意を ためて、もういちど 挑もう。</p>
               </>
+            )}
+            {result.saveFailed && (
+              <p role="status" className="rounded-md border border-rose-500/50 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+                通信に しっぱいし、けっかの 一部が 保存できていない 可能性があります。
+              </p>
             )}
             <button type="button" onClick={handleResultContinue} className="sys-button w-full py-2.5">
               つづける

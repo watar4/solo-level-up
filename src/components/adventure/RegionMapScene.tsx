@@ -21,6 +21,11 @@ export function RegionMapScene({ region, clearedIds, recommendedLevel, willStock
 
   return (
     <div className="mx-auto max-w-xl space-y-1.5">
+      {willStock === 0 && (
+        <p role="status" className="rounded-md border border-sys-border/50 bg-black/30 px-3 py-2 text-center text-[11px] text-sys-text">
+          戦意 0 ―― クエストを 達成すると +1(1日 最大3)。
+        </p>
+      )}
       {region.nodes.map((node) => {
         const isCleared = cleared.has(node.id);
         const isCurrent = current?.id === node.id;

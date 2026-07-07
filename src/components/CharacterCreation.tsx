@@ -28,6 +28,7 @@ export function CharacterCreation({ onCreate }: Props) {
   const [creed, setCreed] = useState<CreedId>(DEFAULT_CREED);
   const [app, setApp] = useState<HunterAppearance>({ ...DEFAULT_APPEARANCE_V2 });
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState(false);
 
   const avatar = useMemo(() => renderAvatar(app), [app]);
   const patch = (p: Partial<HunterAppearance>) => setApp((a) => ({ ...a, ...p }));
@@ -40,8 +41,12 @@ export function CharacterCreation({ onCreate }: Props) {
   const submit = async () => {
     if (submitting) return;
     setSubmitting(true);
+    setSubmitError(false);
     try {
       await onCreate(name, app, creed);
+    } catch (e) {
+      console.error('[create] failed', e);
+      setSubmitError(true);
     } finally {
       setSubmitting(false);
     }
@@ -54,17 +59,23 @@ export function CharacterCreation({ onCreate }: Props) {
     <div className="min-h-dvh overflow-y-auto p-4">
       <div className="mx-auto max-w-md">
         <SystemWindow title="Character Creation" subtitle={`${step + 1} / ${STEPS.length}`}>
-          {/* Step tabs */}
+          {/* Step tabs — completed steps are tappable to jump back;
+              whitespace-nowrap keeps 「しょくぎょう」 from wrapping mid-word
+              on 320px screens. */}
           <div className="mb-3 flex gap-1">
             {STEPS.map((s, i) => (
-              <div
+              <button
                 key={s}
-                className={`flex-1 rounded-sm py-1 text-center text-[10px] font-bold tracking-wide ${
-                  i === step ? 'bg-sys-accent/20 text-sys-accent' : i < step ? 'text-sys-muted' : 'text-sys-muted/50'
+                type="button"
+                disabled={i >= step}
+                onClick={() => i < step && setStep(i)}
+                aria-current={i === step ? 'step' : undefined}
+                className={`flex-1 whitespace-nowrap rounded-sm py-1.5 text-center text-[9px] font-bold tracking-wide ${
+                  i === step ? 'bg-sys-accent/20 text-sys-accent' : i < step ? 'text-sys-muted underline-offset-2 hover:underline' : 'text-sys-muted/50'
                 }`}
               >
                 {s}
-              </div>
+              </button>
             ))}
           </div>
 
@@ -104,6 +115,7 @@ export function CharacterCreation({ onCreate }: Props) {
                     key={c}
                     type="button"
                     onClick={() => pickClass(c)}
+                    aria-pressed={active}
                     className={`flex w-full items-center gap-3 rounded-md border p-3 text-left transition ${
                       active ? 'border-sys-accent bg-sys-accent/10' : 'border-sys-border/40'
                     }`}
@@ -133,6 +145,7 @@ export function CharacterCreation({ onCreate }: Props) {
                     key={cr.id}
                     type="button"
                     onClick={() => setCreed(cr.id)}
+                    aria-pressed={active}
                     className={`flex w-full items-center justify-between rounded-md border p-2.5 text-left transition ${
                       active ? 'border-sys-accent bg-sys-accent/10' : 'border-sys-border/40'
                     }`}
@@ -161,6 +174,12 @@ export function CharacterCreation({ onCreate }: Props) {
                 <p className="mt-1 text-[10px]">評価:E ―― 伸びしろは、あります。たぶん。</p>
               </div>
             </div>
+          )}
+
+          {submitError && (
+            <p role="status" className="mt-3 rounded-md border border-rose-500/50 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+              登録に しっぱいした。通信を たしかめて、もういちど。
+            </p>
           )}
 
           {/* Nav */}
@@ -200,8 +219,9 @@ function Swatches({ label, colors, value, onPick }: { label: string; colors: str
             key={c}
             type="button"
             onClick={() => onPick(c)}
-            aria-label={c}
-            className={`h-7 w-7 rounded-sm border-2 transition ${value === c ? 'border-sys-accent scale-110' : 'border-transparent'}`}
+            aria-label={`${label} ${c}`}
+            aria-pressed={value === c}
+            className={`h-9 w-9 rounded-sm border-2 transition ${value === c ? 'border-sys-accent scale-110' : 'border-transparent'}`}
             style={{ backgroundColor: c }}
           />
         ))}
@@ -220,7 +240,8 @@ function Chips({ label, options, value, onPick }: { label: string; options: { id
             key={o.id}
             type="button"
             onClick={() => onPick(o.id)}
-            className={`rounded-sm border px-2.5 py-1 text-xs transition ${
+            aria-pressed={value === o.id}
+            className={`rounded-sm border px-2.5 py-1.5 text-xs transition ${
               value === o.id ? 'border-sys-accent bg-sys-accent/10 text-sys-text' : 'border-sys-border/40 text-sys-muted'
             }`}
           >

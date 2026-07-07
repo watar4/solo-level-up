@@ -430,7 +430,7 @@ export function useGameData(user: User | null): GameData {
       if (!user) return;
       const c = await createCharacter(
         user.uid,
-        name.trim() || 'Hunter',
+        name.trim() || '名もなきハンター',
         appearance
       );
       // Seed job (from chosen class) + creed alongside the base character.
@@ -794,7 +794,7 @@ export function useGameData(user: User | null): GameData {
   const renameCharacter = useCallback(
     async (name: string): Promise<void> => {
       if (!user || !character) return;
-      const trimmed = name.trim() || 'Hunter';
+      const trimmed = name.trim() || '名もなきハンター';
       if (trimmed === character.name) return;
       await updateCharacter(user.uid, { name: trimmed });
       setCharacter({ ...character, name: trimmed });

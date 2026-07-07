@@ -9,6 +9,7 @@ import {
   OUTFITS, isOutfitUnlocked, outfitUnlockLabel, type UnlockCtx,
 } from '../lib/appearance';
 import type { Character, HunterAppearance } from '../types';
+import { usePanelDialog } from '../hooks/usePanelDialog';
 
 interface Props {
   character: Character;
@@ -21,6 +22,8 @@ interface Props {
 export function ClosetPanel({ character, onClose, onSave }: Props) {
   const [app, setApp] = useState<HunterAppearance>(() => normalizeAppearance(character.appearance ?? { hunterClass: 'knight', primaryColor: '#3a6abc', accentColor: '#c8d0d8' }));
   const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState(false);
+  const dialog = usePanelDialog(onClose);
   const avatar = useMemo(() => renderAvatar(app), [app]);
   const patch = (p: Partial<HunterAppearance>) => setApp((a) => ({ ...a, ...p }));
 
@@ -33,16 +36,35 @@ export function ClosetPanel({ character, onClose, onSave }: Props) {
   const save = async () => {
     if (saving) return;
     setSaving(true);
-    try { await onSave(app); onClose(); } finally { setSaving(false); }
+    setErr(false);
+    try {
+      await onSave(app);
+      onClose();
+    } catch (e) {
+      console.error('[closet] save failed', e);
+      setErr(true);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-[#04070f]/97 p-4" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 5rem)' }}>
+    <div
+      {...dialog}
+      aria-label="クローゼット"
+      className="fixed inset-0 z-50 overflow-y-auto bg-[#04070f]/97 p-4 outline-none"
+      style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 5rem)' }}
+    >
       <div className="mx-auto max-w-md">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="sys-title text-base">クローゼット</h2>
-          <button type="button" onClick={onClose} aria-label="とじる" className="text-sys-muted hover:text-sys-text"><X className="h-5 w-5" /></button>
+          <button type="button" onClick={onClose} aria-label="とじる" className="-m-2 p-2 text-sys-muted hover:text-sys-text"><X className="h-5 w-5" /></button>
         </div>
+        {err && (
+          <p role="status" className="mb-3 rounded-md border border-rose-500/50 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+            保存に しっぱいした。もういちど ためして。
+          </p>
+        )}
 
         <div className="mb-4 flex items-center justify-center rounded-md border border-sys-border/40 bg-[#0a0f1c] py-4">
           <motion.div animate={{ y: [0, -4, 0] }} transition={{ repeat: Infinity, duration: 2 }}>
@@ -68,14 +90,17 @@ export function ClosetPanel({ character, onClose, onSave }: Props) {
                     key={o.id}
                     type="button"
                     disabled={!unlocked}
+                    aria-pressed={active}
                     onClick={() => patch({ outfit: o.id, primaryColor: o.primary, accentColor: o.accent })}
                     className={`rounded-sm border px-2 py-1.5 text-left text-xs transition ${
                       active ? 'border-sys-accent bg-sys-accent/10 text-sys-text'
-                        : unlocked ? 'border-sys-border/40 text-sys-muted' : 'border-sys-border/20 text-sys-muted/40'
+                        : unlocked ? 'border-sys-border/40 text-sys-muted' : 'border-sys-border/20'
                     }`}
                   >
-                    {unlocked ? o.label : `🔒 ${o.label}`}
-                    {!unlocked && <span className="block text-[9px]">{outfitUnlockLabel(o)}</span>}
+                    {/* Locked: dim only the name — the unlock hint is the one
+                        thing the user must be able to read. */}
+                    {unlocked ? o.label : <span className="text-sys-muted/50">🔒 {o.label}</span>}
+                    {!unlocked && <span className="block text-[10px] text-sys-muted">{outfitUnlockLabel(o)}</span>}
                   </button>
                 );
               })}
@@ -105,8 +130,9 @@ function Swatches({ label, colors, value, onPick }: { label: string; colors: str
       <div className="mb-1 text-[10px] uppercase tracking-wide text-sys-muted">{label}</div>
       <div className="flex flex-wrap gap-1.5">
         {colors.map((c) => (
-          <button key={c} type="button" onClick={() => onPick(c)} aria-label={c}
-            className={`h-7 w-7 rounded-sm border-2 transition ${value === c ? 'border-sys-accent scale-110' : 'border-transparent'}`}
+          <button key={c} type="button" onClick={() => onPick(c)}
+            aria-label={`${label} ${c}`} aria-pressed={value === c}
+            className={`h-9 w-9 rounded-sm border-2 transition ${value === c ? 'border-sys-accent scale-110' : 'border-transparent'}`}
             style={{ backgroundColor: c }} />
         ))}
       </div>
@@ -120,8 +146,8 @@ function Chips({ label, options, value, onPick }: { label: string; options: { id
       <div className="mb-1 text-[10px] uppercase tracking-wide text-sys-muted">{label}</div>
       <div className="flex flex-wrap gap-1.5">
         {options.map((o) => (
-          <button key={o.id} type="button" onClick={() => onPick(o.id)}
-            className={`rounded-sm border px-2.5 py-1 text-xs transition ${value === o.id ? 'border-sys-accent bg-sys-accent/10 text-sys-text' : 'border-sys-border/40 text-sys-muted'}`}>
+          <button key={o.id} type="button" onClick={() => onPick(o.id)} aria-pressed={value === o.id}
+            className={`rounded-sm border px-2.5 py-1.5 text-xs transition ${value === o.id ? 'border-sys-accent bg-sys-accent/10 text-sys-text' : 'border-sys-border/40 text-sys-muted'}`}>
             {o.label}
           </button>
         ))}

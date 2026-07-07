@@ -18,11 +18,12 @@ export function MedalCase({ owned }: { owned: MedalId[] }) {
               key={m.id}
               title={has ? `${m.jp}：${m.desc}` : `第${m.chapter}章で獲得`}
               className={`flex flex-col items-center gap-0.5 rounded-sm border p-1.5 text-center ${
-                has ? 'border-amber-500/50 bg-amber-500/5' : 'border-sys-border/30 opacity-40'
+                has ? 'border-amber-500/50 bg-amber-500/5' : 'border-sys-border/30'
               }`}
             >
-              <span className="text-lg">{has ? '🏅' : '🔒'}</span>
-              <span className="text-[8px] leading-tight text-sys-muted">{has ? m.jp.replace('メダル', '') : `${m.chapter}章`}</span>
+              {/* Locked: dim the icon only — the label must stay readable. */}
+              <span className={`text-lg ${has ? '' : 'opacity-40'}`}>{has ? '🏅' : '🔒'}</span>
+              <span className="text-[10px] leading-tight text-sys-muted">{has ? m.jp.replace('メダル', '') : `${m.chapter}章`}</span>
             </div>
           );
         })}

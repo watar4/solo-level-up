@@ -15,6 +15,8 @@ export const CH01_DIALOGUE: Record<string, DialogueLine[]> = {
     { speaker: 'aria', window: 'system', text: '評価:E。……伸びしろは、あります。たぶん。' },
     { speaker: 'balgas', text: 'よう新人。おはよう平原の みんなが 起きてこねえんだ。' },
     { speaker: 'balgas', text: '原因は ダラモン。「まくら大公スヤリン」ってやつさ。行ってみな。' },
+    { speaker: 'aria', window: 'system', text: 'ひとつ だいじな こと。たたかうには「戦意」が 要ります。' },
+    { speaker: 'aria', window: 'system', text: '戦意は 毎日の クエスト達成で +1(最大3)。……つまり、日課が 燃料です。' },
     { speaker: 'aria', window: 'system', text: 'では、はじめましょう。まずは 目の前の ダラモンから。' },
   ],
   'ch1-mid': [

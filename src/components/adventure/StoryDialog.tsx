@@ -41,12 +41,16 @@ export function StoryDialog({ lines, onDone }: Props) {
   const isNarration = line.speaker === 'narration' && !line.name;
 
   return (
-    <button
-      type="button"
-      onClick={advance}
-      className="fixed inset-0 z-[60] flex flex-col justify-end bg-[#04070f]/95 p-4 text-left"
-      aria-label="つぎへ"
-    >
+    // Outer layer is the dialog; the tap-to-advance control is a real button
+    // inside it (role="dialog" on the button itself would erase its button
+    // semantics for assistive tech).
+    <div role="dialog" aria-modal="true" aria-label="かいわ" className="fixed inset-0 z-[60]">
+      <button
+        type="button"
+        onClick={advance}
+        className="flex h-full w-full flex-col justify-end bg-[#04070f]/95 p-4 text-left"
+        aria-label="つぎへ"
+      >
       <motion.div
         key={i}
         initial={{ opacity: 0, y: 8 }}
@@ -87,6 +91,7 @@ export function StoryDialog({ lines, onDone }: Props) {
           </motion.span>
         </div>
       </motion.div>
-    </button>
+      </button>
+    </div>
   );
 }

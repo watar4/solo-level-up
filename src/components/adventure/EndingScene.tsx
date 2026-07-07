@@ -12,7 +12,12 @@ interface Props {
 // back to the everyday quest screen ("習慣は続く").
 export function EndingScene({ stats, onClose }: Props) {
   return (
-    <div className="fixed inset-0 z-[65] overflow-y-auto bg-gradient-to-b from-[#0a1230] to-[#04070f] p-6">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="エンディング"
+      className="fixed inset-0 z-[65] overflow-y-auto bg-gradient-to-b from-[#0a1230] to-[#04070f] p-6"
+    >
       <div className="mx-auto max-w-md space-y-8 py-8 text-center">
         <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.8 }}>
           <div className="text-[11px] uppercase tracking-[0.3em] text-sys-muted">the end</div>
@@ -67,7 +72,7 @@ export function EndingScene({ stats, onClose }: Props) {
         <button type="button" onClick={onClose} className="sys-button-arise mt-4 w-full py-2.5 text-sm font-bold">
           明日のクエストへ
         </button>
-        <p className="pt-2 text-[10px] text-sys-muted">クリア後:地下の「無限回廊」が 開放されました。</p>
+        <p className="pt-2 text-[11px] text-sys-muted">つぎの ちょうせん:地下の「無限回廊」で さらなる 高みへ。</p>
       </div>
     </div>
   );

@@ -118,7 +118,7 @@ export function StatusPanel({
                 ref={inputRef}
                 type="text"
                 value={draft}
-                maxLength={24}
+                maxLength={16}
                 disabled={saving}
                 onChange={(e) => setDraft(e.target.value)}
                 onBlur={commit}
