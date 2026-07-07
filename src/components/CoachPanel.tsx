@@ -49,7 +49,11 @@ export function CoachPanel({ open, uid, ctx, engine, onClose }: Props) {
 
   // Lazily fetch the available on-device models when the settings pane opens.
   useEffect(() => {
-    if (!showSettings || models.length > 0 || !engine.webgpu) return;
+    // Only pull the (web-llm-backed) model list when the download list is
+    // actually shown — i.e. no model chosen yet. Avoids loading the heavy lib
+    // on the main thread just to open settings for a cached/active user.
+    const needsList = engine.status === 'rules' || engine.status === 'error';
+    if (!showSettings || !needsList || models.length > 0 || !engine.webgpu) return;
     let cancelled = false;
     (async () => {
       const { listAvailableModels } = await import('../lib/coach/webllm');
@@ -59,7 +63,7 @@ export function CoachPanel({ open, uid, ctx, engine, onClose }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [showSettings, models.length, engine.webgpu]);
+  }, [showSettings, models.length, engine.webgpu, engine.status]);
 
   if (!open) return null;
 
@@ -227,8 +231,28 @@ function ModelSettings({ engine, models }: { engine: CoachEngineApi; models: Coa
     <div className="space-y-3 py-1">
       <p className="text-xs leading-relaxed text-sys-muted">
         端末内でAIを動かすと、完全無料・回数無制限・オフラインで相談できます。記録は端末の外に出ません。
-        モデルは初回のみダウンロードします(Wi-Fi 推奨)。
+        モデルは初回のみダウンロードします(Wi-Fi 推奨)。負荷が高いため、起動ごとに自動では立ち上げず、
+        使うときにここで有効化します。
       </p>
+
+      {engine.status === 'cached' && (
+        <div className="border border-sys-accent/30 px-3 py-2">
+          <p className="text-xs text-sys-text">ダウンロード済み: {engine.modelId}</p>
+          <p className="mt-0.5 text-[10px] text-sys-muted">この端末で有効化すると、今のセッションで使えます。</p>
+          <div className="mt-2 flex items-center gap-2">
+            <button type="button" onClick={() => engine.activate()} className="sys-button">
+              <Cpu className="h-3.5 w-3.5" /> 端末内AIを有効にする
+            </button>
+            <button
+              type="button"
+              onClick={() => engine.removeModel()}
+              className="flex items-center gap-1 text-[11px] text-sys-muted hover:text-rose-300"
+            >
+              <Trash2 className="h-3.5 w-3.5" /> 削除
+            </button>
+          </div>
+        </div>
+      )}
 
       {engine.status === 'loading' && engine.progress && (
         <div className="border border-sys-accent/30 px-3 py-2">
@@ -262,7 +286,7 @@ function ModelSettings({ engine, models }: { engine: CoachEngineApi; models: Coa
 
       {engine.error && <p className="text-xs text-rose-300">{engine.error}</p>}
 
-      {engine.status !== 'loading' && (
+      {(engine.status === 'rules' || engine.status === 'error') && (
         <div className="space-y-2">
           {models.length === 0 ? (
             <p className="flex items-center gap-2 text-xs text-sys-muted">

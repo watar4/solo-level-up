@@ -14,7 +14,9 @@ import type { CoachDigest } from '../lib/coach/digest';
 // falls back to rules on any failure. Engine choice is a device capability, so
 // the selected model id lives in localStorage (never synced to Firestore).
 
-export type EngineStatus = 'rules' | 'loading' | 'ready' | 'error';
+// 'cached' = a model was downloaded before but is NOT loaded this session yet
+// (the user must activate it explicitly — we never auto-load on startup).
+export type EngineStatus = 'rules' | 'cached' | 'loading' | 'ready' | 'error';
 
 const modelKeyOf = (uid: string) => `slu:coachModel:${uid}`;
 
@@ -26,6 +28,7 @@ export interface CoachEngineApi {
   progress: { text: string; progress: number } | null;
   error: string | null;
   downloadModel: (id: string) => Promise<void>;
+  activate: () => Promise<void>; // load the already-downloaded ('cached') model for this session
   removeModel: () => Promise<void>;
   narrate: (ctx: CoachContext, digest: CoachDigest) => Promise<string | null>;
   chat: CoachEngine['chat'];
@@ -40,46 +43,30 @@ export function useCoachEngine(uid: string | null): CoachEngineApi {
   const [error, setError] = useState<string | null>(null);
   const webgpu = webgpuAvailable();
 
-  // Restore the previously downloaded model id and, if its weights are still
-  // cached, auto-load it so returning users get the local engine without a
-  // second download.
+  // Restore which model the user previously downloaded — but deliberately DO
+  // NOT load it. Auto-initialising a multi-hundred-MB model on every app
+  // startup can hang / OOM the tab; if that crashes the tab it reloads and
+  // tries again, a loop in which the coach never appears. We only read a
+  // lightweight localStorage flag here (no web-llm import at all at startup)
+  // and surface a downloaded model as 'cached' so the user can activate it
+  // explicitly for the session.
   useEffect(() => {
     local.current = null;
-    setStatus('rules');
-    setModelId(null);
     setProgress(null);
     setError(null);
-    if (!uid || !webgpu) return;
-    let cancelled = false;
+    if (!uid || !webgpu) {
+      setModelId(null);
+      setStatus('rules');
+      return;
+    }
     let saved: string | null = null;
     try {
       saved = localStorage.getItem(modelKeyOf(uid));
     } catch {
       saved = null;
     }
-    if (!saved) return;
     setModelId(saved);
-    (async () => {
-      try {
-        const { isModelCached, loadLocalModel } = await import('../lib/coach/webllm');
-        if (!(await isModelCached(saved))) return; // needs an explicit re-download
-        if (cancelled) return;
-        setStatus('loading');
-        const engine = await loadLocalModel(saved, (p) => !cancelled && setProgress(p));
-        if (cancelled) return;
-        local.current = engine;
-        setStatus('ready');
-      } catch (err) {
-        if (cancelled) return;
-        console.error('[coach] auto-load failed', err);
-        setStatus('rules');
-      } finally {
-        if (!cancelled) setProgress(null);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+    setStatus(saved ? 'cached' : 'rules');
   }, [uid, webgpu]);
 
   const downloadModel = useCallback(
@@ -119,6 +106,10 @@ export function useCoachEngine(uid: string | null): CoachEngineApi {
     },
     [uid, webgpu]
   );
+
+  const activate = useCallback(async () => {
+    if (modelId) await downloadModel(modelId);
+  }, [modelId, downloadModel]);
 
   const removeModel = useCallback(async () => {
     const id = modelId;
@@ -171,6 +162,7 @@ export function useCoachEngine(uid: string | null): CoachEngineApi {
     progress,
     error,
     downloadModel,
+    activate,
     removeModel,
     narrate,
     chat,

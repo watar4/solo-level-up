@@ -31,7 +31,7 @@ const ctx = buildCoachContext({ today: '2026-07-07', character, quests });
 const rules = createRulesEngine();
 const engine: CoachEngineApi = {
   kind: 'rules', status: 'rules', webgpu: false, modelId: null, progress: null, error: null,
-  downloadModel: async () => {}, removeModel: async () => {},
+  downloadModel: async () => {}, activate: async () => {}, removeModel: async () => {},
   narrate: (c, d) => rules.narrate(c, d),
   chat: (c, h, onToken) => rules.chat(c, h, onToken),
 };
