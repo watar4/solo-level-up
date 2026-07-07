@@ -371,7 +371,7 @@ export function AdventurePanel(props: Props) {
   return (
     <div
       {...shellDialog}
-      className="fixed inset-0 z-50 overflow-y-auto bg-[#04070f]/97 p-4 outline-none"
+      className="fixed inset-0 z-50 overflow-y-auto bg-[#04070f]/95 p-4 outline-none"
       style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 5rem)' }}
       aria-label="冒険"
     >

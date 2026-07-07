@@ -30,10 +30,27 @@ const mock: Character = {
   campaign,
 };
 
+// A JUST-created character: full v2 appearance, but no campaign / unlocked yet.
+const freshMock: Character = {
+  uid: 'demo', name: 'できたてハンター', level: 1, exp: 0, totalExp: 0,
+  stats: { STR: 10, AGI: 10, INT: 10, VIT: 10, PER: 10 },
+  statPoints: 0, createdAt: 0, lastSeenAt: 0,
+  appearance: {
+    hunterClass: 'mage', primaryColor: '#7a3ac3', accentColor: '#dbb56a',
+    skin: '#f3c79b', hair: 'short', hairColor: '#5a3a22', eyes: 'normal',
+    eyeColor: '#3a2a1a', outfit: 'mage', accessory: 'none',
+  },
+  job: { base: 'mage' },
+  creed: 'steady',
+};
+
 function Demo() {
   const [hash] = useState(() => window.location.hash);
   if (hash === '#closet') {
     return <ClosetPanel character={mock} onClose={() => {}} onSave={async () => {}} />;
+  }
+  if (hash === '#closet-fresh') {
+    return <ClosetPanel character={freshMock} onClose={() => {}} onSave={async () => {}} />;
   }
   if (hash === '#job') {
     return <JobPanel character={mock} onClose={() => {}} onAdvance={async () => {}} onChangeCreed={async () => {}} />;

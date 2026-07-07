@@ -57,7 +57,7 @@ export function JobPanel({ character, onClose, onAdvance, onChangeCreed }: Props
     <div
       {...dialog}
       aria-label="ギルド ― 職業"
-      className="fixed inset-0 z-50 overflow-y-auto bg-[#04070f]/97 p-4 outline-none"
+      className="fixed inset-0 z-50 overflow-y-auto bg-[#04070f]/95 p-4 outline-none"
       style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 5rem)' }}
     >
       <div className="mx-auto max-w-md space-y-4">
