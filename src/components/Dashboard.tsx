@@ -54,6 +54,7 @@ import { useSavings } from '../hooks/useSavings';
 import { useCoachData } from '../hooks/useCoachData';
 import { useCoachEngine } from '../hooks/useCoachEngine';
 import { CoachCard } from './CoachCard';
+import { CoachBoundary } from './CoachBoundary';
 import { rollShadowDrop, RARITY_LABEL } from '../lib/shadows';
 import { weaponStatBonus } from '../lib/items';
 import { formatGold, walletGold } from '../lib/economy';
@@ -446,7 +447,11 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
 
         {tab === 'quest' && (
         <div className="mx-auto max-w-xl space-y-6">
-          {coachCtx && <CoachCard ctx={coachCtx} onOpenChat={() => setCoachOpen(true)} />}
+          {coachCtx && (
+            <CoachBoundary>
+              <CoachCard ctx={coachCtx} onOpenChat={() => setCoachOpen(true)} />
+            </CoachBoundary>
+          )}
           <SystemWindow title="Quest Log" subtitle="daily missions">
             <div className="mb-3 flex items-center justify-between">
               <p className="text-xs uppercase tracking-widest text-sys-muted flex items-center gap-1.5">
@@ -784,13 +789,15 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
 
       <Suspense fallback={null}>
         {coachOpen && (
-          <CoachPanel
-            open={coachOpen}
-            uid={user.uid}
-            ctx={coachCtx}
-            engine={coachEngine}
-            onClose={() => setCoachOpen(false)}
-          />
+          <CoachBoundary fallback={null}>
+            <CoachPanel
+              open={coachOpen}
+              uid={user.uid}
+              ctx={coachCtx}
+              engine={coachEngine}
+              onClose={() => setCoachOpen(false)}
+            />
+          </CoachBoundary>
         )}
       </Suspense>
 

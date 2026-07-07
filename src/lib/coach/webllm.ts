@@ -84,7 +84,12 @@ export async function loadLocalModel(
   onProgress: (p: LoadProgress) => void
 ): Promise<CoachEngine> {
   const webllm = await import('@mlc-ai/web-llm');
-  const engine = await webllm.CreateMLCEngine(modelId, {
+  // Run the model in a dedicated Web Worker: downloading the weights and doing
+  // WebGPU inference on the main thread hangs / OOM-crashes the tab (the coach
+  // "disappearing"). The worker isolates that so the UI stays alive and errors
+  // are catchable. Vite bundles this worker URL form natively.
+  const worker = new Worker(new URL('./webllm.worker.ts', import.meta.url), { type: 'module' });
+  const engine = await webllm.CreateWebWorkerMLCEngine(worker, modelId, {
     initProgressCallback: (r) => onProgress({ text: r.text, progress: r.progress }),
   });
 
