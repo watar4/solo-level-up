@@ -49,23 +49,32 @@ const mockQuests: Quest[] = [
 
 function Demo() {
   // #finale seeds chapters 1-11 cleared so only the final chapter (+ending)
-  // remains to drive.
-  const finale = window.location.hash === '#finale';
+  // remains to drive. #nowill starts with 0 Will (shortage UX). #weak swaps
+  // in a fragile Lv1 hunter (defeat UX).
+  const hash = window.location.hash;
+  const finale = hash === '#finale';
+  const noWill = hash === '#nowill';
+  const weak = hash === '#weak';
   const [campaign, setCampaign] = useState<CampaignState>({
     ...defaultCampaign(today),
-    will: { stock: 3, earnedToday: 0, date: today },
+    will: { stock: noWill ? 0 : 3, earnedToday: noWill ? 3 : 0, date: today },
     ...(finale ? { chapter: 12, clearedChapters: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], medals: ['hayaoki', 'kyouyaru', 'shuuchuu', 'harahachi', 'kotsukotsu', 'undou', 'oyasumi', 'yokkame', 'homeru', 'bochibochi', 'ippozutsu'] } : {}),
   });
 
+  const demoChar: Character = weak
+    ? { ...character, level: 1, stats: { STR: 3, AGI: 3, INT: 3, VIT: 1, PER: 1 } }
+    : character;
+
   return (
     <AdventurePanel
-      character={{ ...character, campaign }}
-      effectiveStats={character.stats}
+      character={{ ...demoChar, campaign }}
+      effectiveStats={demoChar.stats}
       quests={mockQuests}
       campaign={campaign}
-      equippedShadows={demoShadows}
-      // Keep Will topped up so the full chapter can be walked in one demo run.
-      onSaveCampaign={async (c) => setCampaign({ ...c, will: { ...c.will, stock: 3 } })}
+      equippedShadows={weak ? [] : demoShadows}
+      // Keep Will topped up so the full chapter can be walked in one demo run
+      // (except the #nowill shortage scenario).
+      onSaveCampaign={async (c) => setCampaign(noWill ? c : { ...c, will: { ...c.will, stock: 3 } })}
       onAwardGold={async () => {}}
       onAwardShadow={async () => ({ id: 's1', name: 'ねむりの影' })}
       onShadowGrowth={async () => []}
