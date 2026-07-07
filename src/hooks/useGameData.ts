@@ -5,6 +5,7 @@ import {
   loadCharacter,
   subscribeQuests,
   createCharacter,
+  createQuest,
   updateCharacter,
   deleteCharacter,
   updateQuest,
@@ -23,7 +24,7 @@ import {
   buildMasterShadows,
   isMasterEmail,
 } from '../lib/masterConfig';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import type {
   ActivityLevel,
@@ -58,6 +59,7 @@ import { earnWill, ungrantWill } from '../lib/battle/will';
 import { questExpMultiplier, streakCapFor, shopDiscountFor, DEFAULT_CREED } from '../lib/creeds';
 import { migrateAppearance } from '../lib/appearance';
 import { JOB_BY_ID, TIER2_LEVEL, TIER3_LEVEL } from '../lib/jobs';
+import { nextStreak, reconcileFreeze, weekStartKey } from '../lib/streak';
 
 export interface QuestEditPatch {
   title: string;
@@ -279,6 +281,8 @@ export function useGameData(user: User | null): GameData {
   const [busyQuestId, setBusyQuestId] = useState<string | null>(null);
   // Last YYYY-MM-DD we published "gate open" for, to avoid redundant writes.
   const gateWriteRef = useRef<string | null>(null);
+  // Fire the returning-user catch-up nudge at most once per session.
+  const catchupShownRef = useRef(false);
 
   // Always-current mirror of `character`. The small mutators below (gold,
   // dex, campaign, consumables …) are frequently CHAINED inside one async
@@ -364,6 +368,65 @@ export function useGameData(user: User | null): GameData {
     return subscribeQuests(user.uid, setQuests);
   }, [user]);
 
+  // Live-sync the character doc across devices/tabs. The initial-load effect
+  // above still owns first load, master provisioning, migration and creation;
+  // this only folds in changes made ELSEWHERE (another device or tab) so a
+  // single account never silently drifts between devices. We skip snapshots
+  // carrying our own un-acked local writes (`hasPendingWrites`) so an in-flight
+  // reward chain — which drives state through `characterRef`/`commitCharacter`
+  // and writes absolute values — is never clobbered by its own echo. Remote
+  // fields are merged over the current character so a peer on an older schema
+  // can't drop a field we hold locally.
+  useEffect(() => {
+    if (!user || !db) return;
+    const ref = doc(db, 'characters', user.uid);
+    return onSnapshot(
+      ref,
+      (snap) => {
+        if (!snap.exists() || snap.metadata.hasPendingWrites) return;
+        const cur = characterRef.current;
+        // Wait for the initial load to establish the character (avoids racing
+        // creation / master provisioning on first sign-in).
+        if (!cur) return;
+        const remote = snap.data() as Character;
+        if (remote.uid !== cur.uid) return;
+        commitCharacter({ ...cur, ...remote });
+      },
+      (err) => console.error('[character:subscribe] failed', err)
+    );
+  }, [user, commitCharacter]);
+
+  // Returning-user catch-up nudge (docs 08 §1, L0). When a user who was last
+  // active on an earlier day opens the app with unfinished dailies, surface a
+  // single toast so the loop has a starting point even without push. Evaluated
+  // once per session, and only after quests have actually arrived (so we don't
+  // decide off an empty first snapshot). Never nags within the same day or a
+  // brand-new account with no quests.
+  useEffect(() => {
+    if (catchupShownRef.current || loading || !character || quests.length === 0) return;
+    catchupShownRef.current = true;
+    const seen = new Date(character.lastSeenAt || 0);
+    const lastSeenDay = `${seen.getFullYear()}-${String(seen.getMonth() + 1).padStart(2, '0')}-${String(seen.getDate()).padStart(2, '0')}`;
+    if (lastSeenDay >= todayKey()) return; // already active today
+    const remaining = quests.filter((q) => !q.archived && q.type === 'daily' && !isQuestDoneToday(q));
+    if (remaining.length === 0) return;
+    const topStreak = remaining.reduce((m, q) => Math.max(m, q.streak), 0);
+    enqueue([
+      {
+        id: `reminder:catchup:${Date.now()}`,
+        kind: 'reminder',
+        title: 'おかえりなさい',
+        primary: `今日の クエストが ${remaining.length}件`,
+        secondary:
+          topStreak >= 2
+            ? `連続 ${topStreak}日 が 途切れそう。今日、ひとつだけでも。`
+            : '今日、ひとつだけでも。',
+        icon: '📋',
+        accent: 'gold',
+      },
+    ]);
+  }, [character, quests, loading, enqueue]);
+
   // Publish the focus-gate "open today" state whenever a quest is completed
   // today. The iOS automation polls the public gate doc; writing today's date
   // unlocks it. We only write once per day (gateWriteRef guard) and never
@@ -447,6 +510,26 @@ export function useGameData(user: User | null): GameData {
       } catch (err) {
         console.error('[create] job/creed seed failed', err);
       }
+      // Seed a first-session quick win (docs 08 §3). A trivially easy daily so
+      // the very first tap lands a completion + reward, closing the loop on day
+      // one. Fire-and-forget: it surfaces via the quest subscription and its
+      // absence must never block character creation.
+      try {
+        await createQuest({
+          uid: user.uid,
+          title: 'コップ一杯の水をのむ',
+          description: 'まずは ひとつ。ここから 始まります。',
+          type: 'daily',
+          targetStat: 'VIT',
+          difficulty: 'E',
+          completedDates: [],
+          streak: 0,
+          createdAt: Date.now(),
+          archived: false,
+        });
+      } catch (err) {
+        console.error('[create] first-session quest seed failed', err);
+      }
     },
     [user]
   );
@@ -456,12 +539,15 @@ export function useGameData(user: User | null): GameData {
       if (!user || !character) return;
       const today = todayKey();
       const baseExp = DIFFICULTY_EXP[quest.difficulty];
-      const newStreak =
-        quest.type === 'daily'
-          ? quest.completedDates.includes(yesterdayKey())
-            ? quest.streak + 1
-            : 1
-          : quest.streak;
+      // Streak with three-day-quitter recovery (docs 08 §2): a missed day is
+      // covered by a weekly freeze token or decays the streak instead of
+      // resetting it to 1. Reconcile the token stock for the current week first.
+      const freezeNow = reconcileFreeze(character.streakFreeze, weekStartKey(new Date()));
+      const streakRes = nextStreak(quest, today, yesterdayKey(), freezeNow);
+      const newStreak = streakRes.streak;
+      const freezeAfter = streakRes.freezeUsed
+        ? { ...freezeNow, stock: freezeNow.stock - 1 }
+        : freezeNow;
       const expMult = streakMultiplier(quest.type, newStreak, streakCapFor(character))
         * questExpMultiplier(character, quest, new Date().getHours());
       const expGained = Math.round(baseExp * expMult);
@@ -482,6 +568,7 @@ export function useGameData(user: User | null): GameData {
         stats,
         statPoints: character.statPoints + exp.statPointsGained,
         gold: (character.gold ?? 0) + goldGained,
+        streakFreeze: freezeAfter,
         lastSeenAt: Date.now(),
       };
 
@@ -542,6 +629,17 @@ export function useGameData(user: User | null): GameData {
           });
         }
       }
+      if (streakRes.freezeUsed) {
+        eventsAll.push({
+          id: `streak-freeze:${Date.now()}`,
+          kind: 'streak',
+          title: '継続の盾',
+          primary: `連続 ${newStreak}日 を まもった`,
+          secondary: `フリーズを 1つ 使用(残り ${freezeAfter.stock})。四日目、いきましょう。`,
+          icon: '🛡️',
+          accent: 'cyan',
+        });
+      }
       eventsAll.push(...events);
 
       await Promise.all([
@@ -558,6 +656,7 @@ export function useGameData(user: User | null): GameData {
           stats: updated.stats,
           statPoints: updated.statPoints,
           gold: updated.gold,
+          streakFreeze: updated.streakFreeze,
           lastSeenAt: updated.lastSeenAt,
           unlocked: updated.unlocked,
           title: updated.title,

@@ -77,6 +77,12 @@ export interface Character {
   title?: string;     // currently-equipped title from an achievement
   weightTarget?: number; // kg, one decimal — drives target line on the chart
   appearance?: HunterAppearance;
+  // ----- streak recovery (三日坊主救済) -----
+  // Weekly "freeze" tokens. Completing a daily whose previous day was missed
+  // spends one token to keep the streak alive instead of decaying it. `stock`
+  // refills to WEEKLY_FREEZE_STOCK when `weekStartDate` (Monday, YYYY-MM-DD)
+  // rolls over. Optional so pre-existing characters load unchanged.
+  streakFreeze?: { stock: number; weekStartDate: string };
   // ----- job / creed / cosmetics (キャラクリ v2) -----
   job?: HunterJob;         // class progression (base + tier2/tier3)
   creed?: string;          // playstyle creed id (lib/creeds.ts); changeable
@@ -333,7 +339,7 @@ export interface SavingsEntry {
 
 export type SystemEventKind =
   | 'level-up' | 'achievement' | 'skill' | 'shadow' | 'boss' | 'inbox' | 'nutrition'
-  | 'gold' | 'item' | 'evolution' | 'savings';
+  | 'gold' | 'item' | 'evolution' | 'savings' | 'streak' | 'reminder';
 
 export interface SystemEvent {
   id: string;

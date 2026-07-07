@@ -281,3 +281,28 @@ P2で簡略化していた影を、docs 03 §6 の設計どおりに本実装。
 P1(ロジック基盤)→P2(第1章プレイアブル)→P4(2〜12章量産)→P3(キャラクリv2)→P5(仕上げ)を完了。
 不満①(戦闘/ストーリー)②(キャラクリ)③(ボス)すべてに実装が入り、**全12章クリア+エンディングまで通しで遊べる**。総計 **71 ユニットテスト**、実ブラウザでの主要フロー実証済み。
 残課題(将来):宝箱(武器)ドロップの冒険側接続、要所幹部の手描きスプライト差し替え、無限回廊のクリア後コンテンツ肉付け。(影のロール/作戦指示は Increment 6 で実装済み)
+
+---
+
+## v2 R1〜R3 — 継続率と信頼性(提案書 08 の実装)✅
+
+`docs/redesign/08-retention-reliability.md` のロードマップから R1〜R3 を実装。
+
+### R1 データ保険
+- **オフライン永続化**(`src/firebase.ts`):`initializeFirestore` に `persistentLocalCache`(+`persistentMultipleTabManager`)を追加。IndexedDB 不可の環境では try/catch でメモリキャッシュにフォールバック。`ignoreUndefinedProperties` は維持。
+- **character ライブ購読**(`useGameData.ts`):初回ロード後に `onSnapshot(characters/{uid})` を購読。`hasPendingWrites` の自己エコーは無視し、他端末の変更のみ `{...cur, ...remote}` でマージ。書込 API は無改修。§5 の競合は購読+既存 `characterRef` で実質緩和(フィールド分割書き込みは将来課題)。
+
+### R2 三日坊主救済
+- **新規 `src/lib/streak.ts`**(純粋関数):`nextStreak`(継続=+1 / 昨日抜け+フリーズ=維持&消費 / フリーズ無=半減で 1 を下回らない / 当日重複=不変 / non-daily=不変)、`reconcileFreeze`(週次補充)、`weekStartKey`(月曜起点)。
+- `Character.streakFreeze?: { stock; weekStartDate }` を追加。`completeQuest` の streak 算出を差し替え、消費時は在庫を減らして永続化+「継続の盾」トーストを表示。
+- **新規テスト `streak.test.ts` 11 件**。
+
+### R3 キャッチアップ+初回体験
+- **初回クエスト**:`createCharacterWithName` 直後に超簡単デイリー「コップ一杯の水をのむ」(E)を自動生成(fire-and-forget、購読で表示)。
+- **復帰ナッジ**(docs 08 §1 L0):前回アクティブが前日以前かつ未達成デイリーがある場合のみ、起動時に1回だけ「おかえりなさい」トースト。当日再訪や新規0クエストでは出さない。`SystemEventKind` に `streak`/`reminder` を追加。
+
+### 検証
+- `tsc -b`・`npm run build` 成功。**全92テスト green**(既存81+streak11)。実機スモークでログイン画面が pageerror 0 で描画。
+
+### 見送り(将来)
+- R4 ローカル通知(権限・SW `periodicsync`/`notificationclick`・設定UI)、R5 穴埋め(メダル配線・宝箱ドロップ)、L2 Web Push(要サーバーレス送信)。§5 のフィールド分割書き込み(`arrayUnion`)。
