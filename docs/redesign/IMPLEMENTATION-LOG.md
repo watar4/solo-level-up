@@ -306,3 +306,33 @@ P1(ロジック基盤)→P2(第1章プレイアブル)→P4(2〜12章量産)→P
 
 ### 見送り(将来)
 - R4 ローカル通知(権限・SW `periodicsync`/`notificationclick`・設定UI)、R5 穴埋め(メダル配線・宝箱ドロップ)、L2 Web Push(要サーバーレス送信)。§5 のフィールド分割書き込み(`arrayUnion`)。
+
+---
+
+## v3 C1〜C3 — AIコーチ(提案書 09 の実装)✅
+
+`docs/redesign/09-ai-coach.md` のロードマップ C1〜C3 を実装。制約は「**無課金かつ回数無制限**」なので、Gemini(無料枠に RPM/RPD 制限あり)は既定から外し、**ルールベース + 端末内LLM(WebLLM)** の2層構成にした。
+
+### C1 コンテキスト+ダイジェスト(純粋関数)
+- **新規 `src/lib/coach/context.ts`**:`buildCoachContext`(character/quests/weights/meals/savings を1つの `CoachContext` に集約。日付は引数で受け Date.now 非依存)、`contextToPrompt`(LLM 用の簡潔な日本語箇条書き、存在するデータのみ)。
+- **新規 `src/lib/coach/digest.ts`**:`buildDigest`(起動時あいさつ+直近動向+**優先順位付きの今日の一手**。at-risk連続→復帰→残数→記録促し→称賛の順。文言は `today` のハッシュで決定=テスト可能、`Math.random` 不使用)。
+- `resolveNutritionTarget` を `nutrition.ts` に追加(MealPanel と同じ target でコーチが食事を評価)。
+- **新規テスト 17 件**(context 9・digest 8)。
+
+### C2 UI 搭載
+- **新規 `CoachCard.tsx`**:quest タブ最上部に常設。ダイジェスト(headline+bullets+CTA)を全ユーザーに表示、「アリアに相談する」で CoachPanel を開く。
+- v2 の起動トーストは**3日以上の不在時のみ**に縮小(常設カードと二重化しないため)。
+- **新規 `useCoachData.ts`**:meals/weights を購読し(savings は Dashboard の既存購読を流用)context を組む。
+
+### C3 端末内LLM(WebLLM)
+- **新規 `src/lib/coach/engine.ts`**:`CoachEngine` interface + `createRulesEngine`(常時・決定論。連続/体重/食事/貯金/今日の質問をキーワード分類して context から回答)。`gemini` は union に予約のみ(未実装)。
+- **新規 `src/lib/coach/webllm.ts`**:`@mlc-ai/web-llm` を**必ず動的 import**。WebGPU でモデルをブラウザ内実行(無料・回数無制限・オフライン・ログは端末外に出ない)。モデルIDは `prebuiltAppConfig.model_list` から実在するものを実行時に解決。narrate はストリーム無・出力検証つき、chat はトークンストリーミング。
+- **新規 `useCoachEngine.ts`**:エンジン状態管理(rules 既定→DL 済みなら webllm 自動ロード)、DL/削除、失敗時は rules に自動フォールバック。選択モデルIDは localStorage(端末依存のため Firestore 非同期)。
+- **新規 `CoachPanel.tsx`**:ストリーミングチャット(履歴は sessionStorage、最大20往復、Firestore 保存なし)+モデルDL/削除UI。WebGPU 非対応時は理由を表示。
+- `@mlc-ai/web-llm@0.2.84`(バージョン固定)を追加。ビルドで**独立した遅延チャンク**(~6MB)に分離=初期バンドル(147kB)に混ざらないことを確認。
+
+### 検証
+- `tsc -b`・`npm run build` 成功。**全109テスト green**(既存92+coach17)。実ブラウザ(`coach-demo.html`)で pageerror 0:カード描画・ルールエンジンのチャット応答(context 参照)・WebGPU 非対応フォールバック表示を確認。
+
+### 見送り(将来)
+- C4:Chrome 内蔵 Prompt API エンジン / 週次ふりかえりレポート生成 /(任意)Gemini BYOK エンジン。narrate の LLM 言い換えを CoachCard に反映する導線(現状 card は rules 文、LLM は chat のみ)。
