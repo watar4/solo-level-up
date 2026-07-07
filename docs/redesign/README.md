@@ -23,6 +23,7 @@
 | [`05-character.md`](./05-character.md) | キャラクリ v2。パーツ式ドット絵、職業システム、転職ツリー、信条、衣装 |
 | [`06-boss-design.md`](./06-boss-design.md) | ボスデザイン規格と全60体のロスター表(名前・属性・ギミック・ロア) |
 | [`07-implementation.md`](./07-implementation.md) | **実装者(Opus)向け**:型定義、新規ファイル構成、Firestore スキーマ、既存データ移行、5フェーズのロードマップ |
+| [`08-retention-reliability.md`](./08-retention-reliability.md) | **提案書 v2(v1 実装完了後の追補)**:継続率と信頼性の改修。リマインダー通知・三日坊主救済(ストリーク)・初回体験・Firestore オフライン永続化・書き込み競合・ライブ購読。R1〜R5 の実装ロードマップつき |
 
 ## 提案のコア思想(3行で)
 
