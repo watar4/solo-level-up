@@ -1,3 +1,5 @@
+import type { CampaignState } from './lib/story/campaign';
+
 export type StatKey = 'STR' | 'AGI' | 'INT' | 'VIT' | 'PER';
 
 export const STAT_LABELS: Record<StatKey, { jp: string; en: string }> = {
@@ -63,7 +65,12 @@ export interface Character {
   // Distinct from the achievement-style "unlocked.skills" tags above.
   equippedSkills?: string[];
   // Continuous-mode boss tower progress. Floor = bossesDefeated + 1.
+  // Retained for the post-clear "infinite corridor"; the story campaign uses
+  // `campaign` below.
   bossesDefeated?: number;
+  // Story campaign save-state (『ダラリア大陸』). Optional so pre-campaign
+  // characters load unchanged; seeded on first Adventure entry.
+  campaign?: CampaignState;
   // ----- nutrition / meal goal -----
   weightTargetDate?: string;         // YYYY-MM-DD deadline that pairs with weightTarget
   activityLevel?: ActivityLevel;     // maintenance-calorie multiplier

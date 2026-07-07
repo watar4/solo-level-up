@@ -32,6 +32,7 @@ const ResetAccountModal  = lazy(() => import('./ResetAccountModal').then((m) => 
 const StatsDashboard     = lazy(() => import('./StatsDashboard').then((m) => ({ default: m.StatsDashboard })));
 const ShadowArmyPanel    = lazy(() => import('./ShadowArmyPanel').then((m) => ({ default: m.ShadowArmyPanel })));
 const DailyBossPanel     = lazy(() => import('./DailyBossPanel').then((m) => ({ default: m.DailyBossPanel })));
+const AdventurePanel     = lazy(() => import('./adventure/AdventurePanel').then((m) => ({ default: m.AdventurePanel })));
 const BattleSkillsPanel  = lazy(() => import('./BattleSkillsPanel').then((m) => ({ default: m.BattleSkillsPanel })));
 const AppearanceEditor   = lazy(() => import('./AppearanceEditor').then((m) => ({ default: m.AppearanceEditor })));
 const InventoryPanel     = lazy(() => import('./InventoryPanel').then((m) => ({ default: m.InventoryPanel })));
@@ -62,6 +63,7 @@ import {
   BarChart3,
   Backpack,
   BookOpen,
+  Compass,
   ChevronDown,
   ChevronUp,
   Coins,
@@ -235,6 +237,7 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
   const [statsOpen, setStatsOpen] = useState(false);
   const [shadowOpen, setShadowOpen] = useState(false);
   const [bossOpen, setBossOpen] = useState(false);
+  const [adventureOpen, setAdventureOpen] = useState(false);
   const [battleSkillsOpen, setBattleSkillsOpen] = useState(false);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [inventoryOpen, setInventoryOpen] = useState(false);
@@ -618,13 +621,27 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
         )}
 
         {tab === 'combat' && (
-          <div className="mx-auto max-w-xl">
+          <div className="mx-auto max-w-xl space-y-3">
+            <button
+              type="button"
+              onClick={() => setAdventureOpen(true)}
+              className="flex w-full items-center gap-4 rounded-lg border-2 border-sys-accent bg-gradient-to-r from-sys-accent/15 to-transparent p-4 text-left transition active:scale-[0.99]"
+            >
+              <Compass className="h-8 w-8 shrink-0 text-sys-accent" />
+              <span className="min-w-0 flex-1">
+                <span className="block text-base font-black text-sys-text">冒険にでる</span>
+                <span className="block text-[11px] text-sys-muted">
+                  ダラリア大陸・ストーリー ― 戦意 {game.campaign.will.stock}/3
+                </span>
+              </span>
+              <span className="shrink-0 text-lg text-sys-accent">▶</span>
+            </button>
             <SystemWindow title="Combat" subtitle="battle & army">
               <div className="grid grid-cols-2 gap-3">
                 <NavTile
                   Icon={Crown}
-                  label="デイリーボス"
-                  sublabel="boss raid"
+                  label="無限回廊"
+                  sublabel="endless tower"
                   accent="gold"
                   onClick={() => setBossOpen(true)}
                 />
@@ -873,6 +890,27 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
             onAwardGold={game.addGold}
             onUseConsumable={game.useConsumable}
             onShadowGrowth={shadowData.gainShadowExpForWin}
+          />
+        )}
+        {adventureOpen && (
+          <AdventurePanel
+            character={character}
+            effectiveStats={effectiveStats}
+            quests={game.quests}
+            campaign={game.campaign}
+            equippedShadows={shadowData.equippedShadows}
+            onSaveCampaign={game.saveCampaign}
+            onAwardGold={game.addGold}
+            onAwardShadow={async (templateId) => {
+              const shadow = await shadowData.awardShadow(templateId);
+              if (!shadow) return null;
+              void game.recordDexShadow(templateId);
+              return { id: shadow.id, name: shadow.name };
+            }}
+            onShadowGrowth={shadowData.gainShadowExpForWin}
+            onUseConsumable={game.useConsumable}
+            onEnqueueEvent={game.enqueueEvent}
+            onClose={() => setAdventureOpen(false)}
           />
         )}
         {shopOpen && (

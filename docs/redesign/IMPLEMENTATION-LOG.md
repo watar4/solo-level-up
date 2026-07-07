@@ -39,7 +39,50 @@
 
 ---
 
+## Increment 2 — P2 縦切り(第1章プレイアブル) ✅ 完了
+
+**方針:** 既存の無限タワー(`DailyBossPanel`)は残したまま、新しい全画面「冒険」機能を
+戦闘タブから起動する形で**追加**。動いているアプリを壊さず、第1章を通しで遊べる状態にした。
+
+### 追加したもの(ロジック層)
+
+| ファイル | 内容 |
+|---|---|
+| `src/lib/battle/formulas.ts` | 属性ベースのダメージ計算(旧 `boss.ts` 係数を移植・`BossDef` から分離) |
+| `src/lib/battle/engine.ts` | **純粋関数のバトルエンジン**。ATB・状態異常・ブレイク・奥義・影の援護・敵AI行動スクリプト・勝敗。UI非依存の reducer(`advance`/`playerAction`) |
+| `src/lib/battle/loadout.ts` | Character → エンジン設定(職業→属性、装備スキル解決、影の戦力、メダルパッシブ) |
+| `src/lib/story/campaign.ts` | キャンペーン save-state(戦意・章進行・メダル)。Character doc に保存 |
+| `src/lib/story/dialogue/ch01.ts` + `index.ts` | 第1章の会話データ+登録 |
+| `src/lib/story/regions.ts` | 地方ノードマップ(第1章:イベント3+雑魚3+中ボス+幹部) |
+| `src/lib/enemies/registry.ts` | 敵IDレジストリ |
+| `src/lib/enemies/sprites.ts` | 第1章5体のドット絵(属性色) |
+
+### 追加したもの(UI層)
+
+`src/components/adventure/`:`AdventurePanel`(オーケストレータ)/ `WorldMapScene`(大陸図・章解放ゲート表示)/ `RegionMapScene`(ノード進行)/ `StoryDialog`(会話)/ `BattleScene`(全画面ATB戦闘:コマンド・スキル・道具・奥義・ダメージポップ・ブレイク・状態異常表示)。
+
+### 配線(既存アプリへ)
+
+- `types.ts`:`Character.campaign?` 追加(任意なので既存セーブは無変更)。
+- `useGameData`:`campaign` を派生公開+`saveCampaign`+**`completeQuest` で戦意を獲得**(習慣→戦闘権のループが成立)。
+- `Dashboard`:戦闘タブ先頭に「冒険にでる」ボタン+`AdventurePanel` を lazy マウント。旧タワーは「無限回廊」に改称。
+
+### 検証
+
+- **47 ユニットテスト(全 green)**。うち engine 6 + **実データ結合テスト3**(実際の第1章幹部スヤリンを本物のローダウト+エンジンで撃破まで通す e2e)。
+- `tsc -b` 通過、`npm run build` 成功(AdventurePanel は 44kB の独立チャンク)。
+- **実ブラウザ起動確認**:pageerror ゼロでマウント(types→campaign の循環 import なし)。
+- 制約:戦闘UIの実ブラウザ操作確認は Firebase 認証必須のため未実施。代わりに戦闘パイプラインをロジックレベルで e2e テスト済み。
+
+### 設計判断メモ
+
+- 戦意/章進行は 07§4 のサブコレクション案ではなく **Character doc の `campaign` フィールド**に集約(既存の書き込みと同じ1パッチで済むため)。
+- 弱点は属性サイクルから導出(Increment 1 の方針を戦闘でも適用)。影は当スライスでは「攻撃役の自動ATB」として簡略実装(HP・ロール・作戦指示は後の増分)。宝箱(武器)ドロップは未接続(既存タワー側にはある)。
+
+---
+
 ## 次の増分(未着手)
 
-- **Increment 2 — P2 縦切り(第1章を通しで遊べる):** バトルエンジン抽出(`lib/battle/engine.ts`、`DailyBossPanel` のロジック移植)+ WorldMap/RegionMap/BattleScene/StoryDialog + 戦意の Firestore 配線(`useGameData.completeQuest` に earn を追加、`progress/will`・`progress/story` doc 新設)。
-- **Increment 3 — P3 キャラクリv2**、**Increment 4 — P4 コンテンツ量産(2〜12章)**、**Increment 5 — P5 仕上げ**。詳細は `07-implementation.md` §7。
+- **Increment 3 — P3 キャラクリv2**(パーツ式アバター・職業差別化の永続化・転職・信条・衣装)。
+- **Increment 4 — P4 コンテンツ量産(2〜12章:敵60体・会話・スプライト・ギミック本実装)。**
+- **Increment 5 — P5 仕上げ**(バランス調整・演出磨き・ED)。詳細は `07-implementation.md` §7。

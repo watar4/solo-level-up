@@ -53,6 +53,8 @@ import {
   type AchievementDef,
 } from '../lib/achievements';
 import { newlyUnlockedSkills, type SkillDef } from '../lib/skills';
+import { ensureCampaign, defaultCampaign, type CampaignState } from '../lib/story/campaign';
+import { earnWill } from '../lib/battle/will';
 
 export interface QuestEditPatch {
   title: string;
@@ -119,6 +121,11 @@ export interface GameData {
   useConsumable: (consumableId: string) => Promise<boolean>;
   // Record a shadow template as "seen" for the dex (survives discards).
   recordDexShadow: (templateId: string) => Promise<void>;
+  // ----- story campaign -----
+  // Current campaign save-state (Will, chapter progress, medals). Always
+  // defined (defaults seeded on read); persist changes via saveCampaign.
+  campaign: CampaignState;
+  saveCampaign: (next: CampaignState) => Promise<void>;
   // ----- real-world savings link -----
   setSavingsGoal: (goal: SavingsGoal | null) => Promise<void>;
   setMonthlyBudget: (amount: number | null) => Promise<void>;
@@ -418,7 +425,25 @@ export function useGameData(user: User | null): GameData {
       const { patched, events } = evaluateUnlocks(updated, updatedQuests);
       updated = patched;
 
+      // Earn Will (戦意) — the resource that gates story battles. Daily/weekly
+      // quests grant it up to the per-day + stock caps (docs 03 §1).
+      const camp = ensureCampaign(character.campaign, today);
+      const willRes = earnWill(camp.will, quest.type === 'weekly' ? 'weekly' : 'daily', today);
+      const nextCampaign: CampaignState = { ...camp, will: willRes.state };
+      updated = { ...updated, campaign: nextCampaign };
+
       const eventsAll: SystemEvent[] = [];
+      if (willRes.granted > 0) {
+        eventsAll.push({
+          id: `will:${Date.now()}`,
+          kind: 'boss',
+          title: '戦意 上昇',
+          primary: `戦意 +${willRes.granted}`,
+          secondary: `ストック ${willRes.state.stock}/3 ― 冒険で使える`,
+          icon: '⚔️',
+          accent: 'rose',
+        });
+      }
       if (exp.levelsGained > 0) {
         eventsAll.push({
           id: `level-up:${Date.now()}`,
@@ -462,6 +487,7 @@ export function useGameData(user: User | null): GameData {
           lastSeenAt: updated.lastSeenAt,
           unlocked: updated.unlocked,
           title: updated.title,
+          campaign: updated.campaign,
         }),
         logCompletion(user.uid, quest.id, expGained, today),
       ]);
@@ -963,6 +989,21 @@ export function useGameData(user: User | null): GameData {
     [user, character]
   );
 
+  const saveCampaign = useCallback(
+    async (next: CampaignState): Promise<void> => {
+      if (!user || !character) return;
+      setCharacter({ ...character, campaign: next });
+      try {
+        await updateCharacter(user.uid, { campaign: next });
+      } catch (err) {
+        console.error('[campaign:save] failed, rolling back', err);
+        setCharacter(character);
+        throw err;
+      }
+    },
+    [user, character]
+  );
+
   // ----- real-world savings config --------------------------------------
 
   const setSavingsGoal = useCallback(
@@ -1170,6 +1211,8 @@ export function useGameData(user: User | null): GameData {
     buyConsumable,
     useConsumable,
     recordDexShadow,
+    campaign: character ? ensureCampaign(character.campaign, todayKey()) : defaultCampaign(todayKey()),
+    saveCampaign,
     setSavingsGoal,
     setMonthlyBudget,
     markBudgetRewarded,
