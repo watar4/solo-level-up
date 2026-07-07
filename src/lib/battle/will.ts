@@ -83,3 +83,18 @@ export function spendWill(state: WillState, kind: BattleKind): WillState {
 export function refundOnFirstLordLoss(state: WillState): WillState {
   return { ...state, stock: Math.min(WILL_MAX, state.stock + 1) };
 }
+
+// Take back Will granted by a quest completion that is being unchecked. The
+// exact grant is read from the completion log, so this never removes Will the
+// quest didn't give (closes the check→uncheck→check farming loop). Both the
+// stock and the daily earn counter roll back, each clamped at 0.
+export function ungrantWill(state: WillState, granted: number, today: string): WillState {
+  const rolled = rollDay(state, today);
+  const dec = Math.max(0, granted);
+  if (dec === 0) return rolled;
+  return {
+    ...rolled,
+    stock: Math.max(0, rolled.stock - dec),
+    earnedToday: Math.max(0, rolled.earnedToday - dec),
+  };
+}

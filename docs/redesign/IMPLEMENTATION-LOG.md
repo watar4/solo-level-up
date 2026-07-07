@@ -197,6 +197,45 @@ P2で簡略化していた影を、docs 03 §6 の設計どおりに本実装。
 
 ---
 
+## Increment 7 — 製造チェック&アドバーサリアル・レビュー(Fable 4並列)→ 修正 ✅ 完了
+
+全差分(main比 104ファイル)に対し、4領域(バトルエンジン/進行・永続化/React UI/コンテンツ・データ)の並列アドバーサリアル・レビューを実施。**Blocker 1・Major 8・Minor/Nit 多数**を検出し、以下を修正した。
+
+### 修正済み(重大度順)
+
+| # | 指摘 | 修正 |
+|---|---|---|
+| BLOCKER | **戦闘報酬の消失**:`handleBattleEnd` の gold→影→campaign の連鎖が全て同一レンダーの stale `character` を spread → 最後の campaign 保存がゴールド/図鑑を巻き戻し、次の絶対値書き込みでサーバー側も恒久消失 | `useGameData` に `characterRef`+`commitCharacter` を導入。連鎖ミューテータ(addGold/spendGold/buy・useConsumable/recordDexShadow/saveCampaign/awardExp/updateCreed/advanceJob)を全て ref 基準の同期コミットに書き換え |
+| MAJOR | **EXPトグル稼ぎ**:uncheck 時の払い戻しを現在の信条/時刻で再計算(付与時と不一致) | 払い戻しを completion ログの実測 `expGained` 合計に変更(ログ欠落時のみ再計算にフォールバック) |
+| MAJOR | **戦意トグル稼ぎ**:uncheck が戦意を返還しない → 1クエストで3/3到達可能 | `logCompletion` に `willGained` を記録し、uncheck は `ungrantWill` でログ実測分だけ返還(stock/earnedToday 双方、0クランプ) |
+| MAJOR | **カーブ改定の再計算欠落**:「ロード時に再導出」というコメントに実装がなく、初回 uncheck でレベル急騰+ポイント湧き | `migrateCharacterFields` で `levelFromTotalExp` により**昇格のみ**再導出(+レベル差×5pt)。マスターシード(level>導出値)は据え置き |
+| MAJOR | **章ゲート代替条件が死亡**:snapshot が食事/貯金/体重/フォーカスを 0 固定 | AdventurePanel で useMeals/useWeights/useSavings を購読し実数を供給(`firebaseReady` ガード付き)。フォーカスゲートは履歴データが存在しないため ch3 の代替条件を累計40回に差し替え(chapters.ts に注記) |
+| MAJOR | **鏡の弱点表示が嘘**:エンジンは live 属性(=プレイヤー属性)、UI は静的定義の弱点を表示 | BattleScene を live actor の element 基準に変更 |
+| MAJOR | **DoT死で不死鳥不発**:蘇生判定が敵ターンのみ | `beginPlayerTurn` にも蘇生を実装(+`revive` イベント発行) |
+| MAJOR | **不死鳥が未消費**:冒険戦闘では発動しても在庫が減らない | `revive` イベントで BattleScene が `onUseConsumable('phoenix-feather')` を実行 |
+| MAJOR | **ch12中ボスの看板技が不発**:elite に `phase2` 条件技(elite は phases:1) | `mv.enrage`(HP<50%)を新設して差し替え+「非lordのphase2技禁止」の不変条件テストを追加 |
+| MINOR | 偽通知タップが敵ターン中は無害な no-op | タップを「次の自ターンを浪費」に(pendingWaste キュー) |
+| MINOR | どうぐ二度押しで在庫だけ2消費 | `itemBusyRef` の in-flight ガード |
+| MINOR | ch11「メダルが無効化を打ち破る」未実装 | `nullifyResist`(メダル×0.04)で drain の下限を引き上げ+発動ログ |
+| MINOR | こつこつメダル(goldGain)未消費 | 冒険の戦闘ゴールドに配線(クエストゴールドは払い戻し精度のため flat 維持) |
+| MINOR | advanceJob がレベル/系譜を未検証 | Lv20/40・parent 系譜・重複転職を検証 |
+| MINOR | 作成時の job/creed が fire-and-forget | await 化(失敗時も進行は継続) |
+| MINOR | ch5/ch11 の会話・ロアが実装と矛盾、孤児異名(金蟲侯/虚妃) | テキストを実装に一致させ実名に修正 |
+| NIT | StoryDialog/AdventurePanel の render 中 setState、burnResist の post-tick 判定、pickMove の空 moves クラッシュ、enemy HP 見積りが非攻撃ステで膨張、RegionMap の elite コスト表示、pick() の rng=1.0、未使用データ(TIER_SPRITE_SIZE / ch1-lord-open) | すべて修正・削除 |
+
+### 検証
+
+- **81テスト全green**(回帰テスト追加:ungrantWill×2 / DoT蘇生+revive イベント / nullifyResist の下限 / 非lord phase2 禁止)。`tsc -b`・`npm run build` 成功。
+- 実ブラウザスモーク(第1章通しプレイ)復旧確認 — なお、章ゲート配線が Firebase 未設定環境で throw する回帰をこのスモークが検出し、`firebaseReady` ガードで修正した。
+
+### 見送り(既知の残課題として記録)
+
+- **campaign の whole-object 書き込み競合**(マルチデバイス同時操作時の last-writer-wins)— 単一タブは charRef で実質解消。フィールド分割書き込みは将来課題。
+- **focusBonusExp/しゅうちゅう・mealStreakExp/はらはちぶ メダルが未消費**(判定に「その日の記録有無」が必要で completeQuest から参照不可)— 配線は将来課題。
+- shield 状態の吸収未実装/ブレイク中の敵DoT停止(現状どちらも到達不能)/どうぐ回復の奥義ゲージ非加算/BattleScene の interval が props を固定(現状無害)— レビュー指摘として記録のみ。
+
+---
+
 ## まとめ:全5増分 完了
 
 P1(ロジック基盤)→P2(第1章プレイアブル)→P4(2〜12章量産)→P3(キャラクリv2)→P5(仕上げ)を完了。

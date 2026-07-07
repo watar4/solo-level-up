@@ -29,6 +29,7 @@ const basePlayer: PlayerConfig = {
   firstStrikeBreak: 0,
   ultimatePower: 3.2,
   ultimateName: 'テスト奥義',
+  nullifyResist: 0,
 };
 
 function enemy(partial: Partial<EnemyDef>): EnemyDef {

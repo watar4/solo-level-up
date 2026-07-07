@@ -322,7 +322,8 @@ export function migrateAppearance(old: HunterAppearance | undefined): HunterAppe
 }
 
 function pick<T>(arr: T[], rng: () => number): T {
-  return arr[Math.floor(rng() * arr.length)];
+  // clamp: a caller-supplied rng returning exactly 1.0 must not index past the end
+  return arr[Math.min(arr.length - 1, Math.floor(rng() * arr.length))];
 }
 
 export function randomAppearance(hunterClass: HunterClass, rng: () => number = Math.random): HunterAppearance {

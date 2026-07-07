@@ -34,7 +34,7 @@ export const CH11_ENEMIES: EnemyDef[] = [
     shape: 'blob',
     gimmick: 'nullify',
     moves: [mv.gimmick(3, '「いみない」と 力を けした'), mv.atk(2, 0.8), mv.p2(3, 1.5, '「……ほんとに、いみ ある?」')],
-    lore: '攻撃してこない。毎ターン、力を「意味がない」と消していく。集めたメダルが打ち破る。',
+    lore: 'ほとんど攻撃してこない。毎ターン、力を「意味がない」と消していく。集めたメダルが打ち破る。',
     loreAfter: '温泉の湯もみ係に。「いみ、あった」が口ぐせ。',
     quotes: {
       open: 'がんばっても、いみ なくない?',

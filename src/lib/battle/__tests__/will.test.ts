@@ -5,6 +5,7 @@ import {
   canFight,
   spendWill,
   refundOnFirstLordLoss,
+  ungrantWill,
   rollDay,
   WILL_MAX,
   WILL_DAILY_EARN_CAP,
@@ -69,5 +70,28 @@ describe('will system', () => {
     expect(refundOnFirstLordLoss(s).stock).toBe(WILL_MAX); // cannot exceed cap
     const low = { stock: 0, earnedToday: 3, date: DAY };
     expect(refundOnFirstLordLoss(low).stock).toBe(1);
+  });
+
+  it('ungrantWill takes back exactly the logged grant (closes the toggle farm)', () => {
+    // complete → +1; uncheck → −1; complete again → +1: net one grant.
+    let s = initWill(DAY);
+    s = earnWill(s, 'daily', DAY).state;           // stock 1, earned 1
+    s = ungrantWill(s, 1, DAY);                    // back to 0 / 0
+    expect(s.stock).toBe(0);
+    expect(s.earnedToday).toBe(0);
+    const again = earnWill(s, 'daily', DAY);
+    expect(again.granted).toBe(1);                 // NOT capped out by the toggle
+    expect(again.state.stock).toBe(1);
+    expect(again.state.earnedToday).toBe(1);
+  });
+
+  it('ungrantWill clamps at zero and ignores a 0 grant', () => {
+    let s = initWill(DAY);
+    s = earnWill(s, 'daily', DAY).state;           // 1/1
+    s = spendWill(s, 'mob');                       // stock 0, earned 1
+    const after = ungrantWill(s, 1, DAY);          // stock clamps at 0, earned → 0
+    expect(after.stock).toBe(0);
+    expect(after.earnedToday).toBe(0);
+    expect(ungrantWill(after, 0, DAY)).toEqual(after); // legacy log: no-op
   });
 });

@@ -62,6 +62,10 @@ export function BattleScene(props: Props) {
   const cfgRef = useRef(playerConfig);
   const endedRef = useRef(false);
   const popupSeq = useRef(0);
+  const itemBusyRef = useRef(false);
+  // ch3 fake notification tapped while it wasn't the player's turn — the
+  // "wasted turn" lands on their NEXT input window instead of no-oping.
+  const pendingWasteRef = useRef(false);
   const [, force] = useReducer((x) => x + 1, 0);
   const [log, setLog] = useState<string[]>(
     enemy.quotes?.open ? [enemy.quotes.open] : []
@@ -104,6 +108,10 @@ export function BattleScene(props: Props) {
         case 'ultimate':
           setCutin(cfgRef.current.ultimateName);
           break;
+        case 'revive':
+          // The feather is a held consumable — burn it now that it fired.
+          void props.onUseConsumable('phoenix-feather');
+          break;
         case 'fx':
           if (e.fx === 'fakeNotification') setFakeNotif(true);
           if (e.fx === 'uiSleep') setUiAsleep(true);
@@ -129,6 +137,13 @@ export function BattleScene(props: Props) {
       const r = advance(s, 1, cfgRef.current);
       stateRef.current = r.state;
       if (r.events.length) ingest(r.events);
+      // A fake-notification tap outside the player's turn burns the next one.
+      if (r.state.phase === 'awaiting-input' && pendingWasteRef.current) {
+        pendingWasteRef.current = false;
+        const w = playerAction(r.state, { kind: 'wait' }, cfgRef.current);
+        stateRef.current = w.state;
+        ingest(w.events);
+      }
       if (r.state.phase === 'won' || r.state.phase === 'lost') {
         if (!endedRef.current) {
           endedRef.current = true;
@@ -169,11 +184,18 @@ export function BattleScene(props: Props) {
   };
 
   const useItem = async (item: UsableItem) => {
-    if (item.count <= 0) return;
-    const ok = await props.onUseConsumable(item.id);
-    if (!ok) return;
-    setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, count: i.count - 1 } : i)));
-    act({ kind: 'item', effect: item.effect });
+    // In-flight guard: a double-tap while the consumable write is pending
+    // would decrement inventory twice for one battle effect.
+    if (item.count <= 0 || itemBusyRef.current) return;
+    itemBusyRef.current = true;
+    try {
+      const ok = await props.onUseConsumable(item.id);
+      if (!ok) return;
+      setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, count: i.count - 1 } : i)));
+      act({ kind: 'item', effect: item.effect });
+    } finally {
+      itemBusyRef.current = false;
+    }
   };
 
   // Switch party tactic — costs no turn, so we stay on the player's input.
@@ -186,7 +208,11 @@ export function BattleScene(props: Props) {
   const s = stateRef.current;
   const enemyHpPct = Math.max(0, (s.enemy.hp / s.enemy.maxHp) * 100);
   const playerHpPct = Math.max(0, (s.player.hp / s.player.maxHp) * 100);
-  const weak = weaknessOf(enemy.element);
+  // Read the LIVE actor element, not the static def: the mirror gimmick swaps
+  // the enemy's element to the player's at battle setup, and the engine's
+  // affinity/break math runs on the live value — the badge must match it.
+  const liveElement = s.enemy.element;
+  const weak = weaknessOf(liveElement);
   const awaiting = s.phase === 'awaiting-input';
 
   return (
@@ -230,7 +256,13 @@ export function BattleScene(props: Props) {
           <motion.button
             key="notif" type="button"
             initial={{ y: -60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -60, opacity: 0 }}
-            onClick={() => { act({ kind: 'wait' }); setFakeNotif(false); }}
+            onClick={() => {
+              // Tapping the trap costs a turn: immediately if it's the
+              // player's turn, otherwise their next one (pendingWasteRef).
+              if (stateRef.current.phase === 'awaiting-input') act({ kind: 'wait' });
+              else pendingWasteRef.current = true;
+              setFakeNotif(false);
+            }}
             className="absolute inset-x-3 top-3 z-[72] flex items-center gap-3 rounded-xl border border-white/20 bg-[#1c1c22]/95 p-3 text-left shadow-lg"
           >
             <span className="text-xl">🔔</span>
@@ -283,7 +315,7 @@ export function BattleScene(props: Props) {
               {enemy.name}{props.isMirror && <span className="ml-1 text-[10px] text-sys-muted">(あなたの コピー)</span>}
             </span>
             <span className="flex items-center gap-1">
-              <ElementBadge element={enemy.element} />
+              <ElementBadge element={liveElement} />
               <span className="text-[10px] text-sys-muted">
                 弱点 <span style={{ color: ELEMENT_COLORS[weak] }}>{ELEMENT_LABELS[weak].kanji}</span>
               </span>

@@ -74,6 +74,10 @@ export interface PlayerConfig {
   firstStrikeBreak: number;        // extra break on first weakness hit (scout)
   ultimatePower: number;           // ultimate damage multiplier (tier-scaled)
   ultimateName: string;
+  // ch11 (ムキリョクラゲ): each owned medal raises the floor the `nullify`
+  // gimmick can drain the player's attack to — "集めたメダルが 無効化を
+  // 打ち破る" (docs 06 §3).
+  nullifyResist: number;           // 0..~0.5, from medals
 }
 
 export type ShadowRole = 'attacker' | 'healer' | 'support';
@@ -166,6 +170,7 @@ export type BattleEvent =
   | { type: 'phase2' }
   | { type: 'charge' }
   | { type: 'ultimate' }
+  | { type: 'revive' } // phoenix feather fired — the UI must consume the item
   | { type: 'fx'; fx: GimmickFx }
   | { type: 'miss'; target: string }
   | { type: 'defeat'; target: string }
@@ -188,14 +193,17 @@ export const CLASS_ELEMENT: Record<string, Element> = {
 
 // Neutral, variance-free estimate of the player's per-hit output. Used to size
 // enemy HP from `hpTurns` so numbers stay honest as builds diverge (docs 03
-// §8-3). Assumes the strongest attacking skill at neutral affinity, no crit.
+// §8-3). Evaluates each attacking option with ITS OWN stat (a skill hits with
+// its stat, the basic attack with the class element's stat) — using the raw
+// top stat would inflate enemy HP for builds whose best stat isn't an
+// attacking one (e.g. VIT tanks).
 export function estimatePlayerDamage(cfg: PlayerConfig): number {
+  const strMult = 1 + (cfg.stats.STR ?? 0) * 0.01;
+  const basic = (cfg.stats[ELEMENT_TO_STAT[cfg.primaryElement]] ?? 0) + 4;
   const best = cfg.skills
     .filter((s) => s.kind === 'attack')
-    .reduce((m, s) => Math.max(m, s.damageMultiplier), 1);
-  const strMult = 1 + (cfg.stats.STR ?? 0) * 0.01;
-  const topStat = Math.max(...(Object.values(cfg.stats) as number[]));
-  return Math.max(1, Math.round((topStat + 4) * strMult * best));
+    .reduce((m, s) => Math.max(m, ((cfg.stats[s.stat] ?? 0) + 4) * s.damageMultiplier), basic);
+  return Math.max(1, Math.round(best * strMult));
 }
 
 export function enemyMaxHp(def: EnemyDef, cfg: PlayerConfig, companionCount: number): number {
@@ -360,17 +368,29 @@ function beginPlayerTurn(state: BattleState, cfg: PlayerConfig, rng: () => numbe
   const events: BattleEvent[] = [];
   const p = { ...state.player, atb: state.player.atb - ATB_TARGET, guarding: false };
 
+  // Resist is checked against the PRE-tick statuses so the final tick of a
+  // burn (the one that expires it) is still resisted.
+  const hadBurn = hasBurn(p.statuses);
   const tick = tickStatuses(p.statuses, p.maxHp, rng);
   p.statuses = tick.statuses;
   tick.logs.forEach((t) => events.push({ type: 'log', text: t }));
   if (tick.damage > 0) {
-    const dmg = Math.round(tick.damage * (1 - (hasBurn(p.statuses) ? cfg.burnResist : 0)));
+    const dmg = Math.round(tick.damage * (1 - (hadBurn ? cfg.burnResist : 0)));
     p.hp = Math.max(0, p.hp - dmg);
     events.push({ type: 'damage', target: 'player', amount: dmg, crit: false, weak: false, resist: false });
   }
   // decrement cooldowns at the start of the player's turn
   p.cooldowns = decrementCooldowns(p.cooldowns);
 
+  // Phoenix feather also covers deaths to poison/burn ticks — not just enemy
+  // hits (resolveEnemyTurn has the matching check).
+  if (p.hp <= 0 && p.reviveAvailable) {
+    p.hp = Math.round(p.maxHp * 0.5);
+    p.reviveAvailable = false;
+    events.push({ type: 'log', text: '不死鳥の羽根が きらめいた! 復活!' });
+    events.push({ type: 'revive' });
+    events.push({ type: 'heal', target: 'player', amount: p.hp });
+  }
   if (p.hp <= 0) {
     return finishIfDead({ ...state, player: p }, events);
   }
@@ -648,11 +668,16 @@ function resolveEnemyTurn(state: BattleState, cfg: PlayerConfig, rng: () => numb
     player.hp = Math.round(player.maxHp * 0.5);
     player.reviveAvailable = false;
     events.push({ type: 'log', text: '不死鳥の羽根が きらめいた! 復活!' });
+    events.push({ type: 'revive' });
     events.push({ type: 'heal', target: 'player', amount: player.hp });
   }
 
   return finishIfDead({ ...state, enemy, player, turnNumber }, events);
 }
+
+// Last-resort move for a pathological def with no usable moves — prevents an
+// `undefined.log` crash in applyEnemyMove.
+const STRUGGLE: EnemyMove = { id: 'struggle', kind: 'attack', weight: 1, power: 1, log: 'こうげき!' };
 
 function pickMove(enemy: EnemyActor, rng: () => number): EnemyMove {
   const eligible = enemy.def.moves.filter((m) => {
@@ -667,7 +692,7 @@ function pickMove(enemy: EnemyActor, rng: () => number): EnemyMove {
   });
   const pool = eligible.length ? eligible : enemy.def.moves.filter((m) => m.kind === 'attack');
   const total = pool.reduce((s, m) => s + Math.max(0, m.weight), 0);
-  if (total <= 0) return pool[0] ?? enemy.def.moves[0];
+  if (total <= 0) return pool[0] ?? enemy.def.moves[0] ?? STRUGGLE;
   let r = rng() * total;
   for (const m of pool) {
     r -= Math.max(0, m.weight);
@@ -703,6 +728,7 @@ function applyEnemyMove(
     let dmg = res.damage;
     if (player.guarding) dmg = Math.round(dmg * 0.55);
     dmg = Math.max(1, Math.round(dmg * cfg.damageTakenMult)); // knight passive
+    dmg = Math.round(dmg * damageTakenModifier(player.statuses)); // しるし on the player
     // wake the player if asleep and hit
     player.statuses = wakeOnHit(player.statuses);
     player.hp = Math.max(0, player.hp - dmg);
@@ -739,7 +765,7 @@ function applyEnemyMove(
       }
       break;
     case 'gimmick':
-      applyGimmick(enemy, player, events);
+      applyGimmick(enemy, player, cfg, events);
       break;
     case 'summon':
       // Summons are a later-chapter feature; degrade to a basic hit for now.
@@ -749,11 +775,10 @@ function applyEnemyMove(
   return { enemy, player };
 }
 
-// Gimmick hook (docs 06 §5). Pure-state gimmicks are implemented here; the
-// UI-heavy ones (fakeNotification / mirror / uiSleep) degrade to a small self
-// buff so those fights stay playable until a later increment wires their
-// presentation. Mutates the passed enemy/player copies in place.
-function applyGimmick(enemy: EnemyActor, player: PlayerActor, events: BattleEvent[]): void {
+// Gimmick hook (docs 06 §5). Pure-state gimmicks are implemented here;
+// fakeNotification / uiSleep emit fx events for the scene layer, and mirror is
+// applied at battle setup. Mutates the passed enemy/player copies in place.
+function applyGimmick(enemy: EnemyActor, player: PlayerActor, cfg: PlayerConfig, events: BattleEvent[]): void {
   switch (enemy.def.gimmick) {
     case 'triTurnReset': // ch8: undo all resettable buffs/debuffs/statuses
       enemy.statuses = cleanseResettable(enemy.statuses);
@@ -771,9 +796,17 @@ function applyGimmick(enemy: EnemyActor, player: PlayerActor, events: BattleEven
     case 'darkening': // ch7: the fight gets darker, accuracy slips (stacks)
       player.attackMod = Math.max(0.4, player.attackMod - 0.1);
       break;
-    case 'nullify': // ch11: "it's meaningless" — strips the player's power
-      player.attackMod = Math.max(0.4, player.attackMod - 0.2);
+    case 'nullify': { // ch11: "it's meaningless" — strips the player's power…
+      // …but every owned medal raises the floor it can drain to. With a full
+      // set the drain barely bites: the year of habits IS the counter.
+      const floor = Math.min(1, 0.4 + cfg.nullifyResist);
+      const next = Math.max(floor, player.attackMod - 0.2);
+      if (next === player.attackMod && cfg.nullifyResist > 0) {
+        events.push({ type: 'log', text: 'メダルが ひかり、「いみない」を うちやぶった!' });
+      }
+      player.attackMod = next;
       break;
+    }
     case 'selfBurn': // ch10: spend own HP to power up hard
       enemy.hp = Math.max(1, enemy.hp - Math.round(enemy.maxHp * 0.08));
       enemy.attackMod = Math.min(2.2, enemy.attackMod + 0.4);

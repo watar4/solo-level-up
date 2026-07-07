@@ -41,8 +41,12 @@ export const CHAPTERS: ChapterDef[] = [
     gate: { level: 1, either: null }, recommendedLevel: 2 },
   { id: 2, title: 'あしたやる沼', region: 'あしたやる沼', theme: '先延ばし', lordId: 'ashitabake', medalId: 'kyouyaru',
     gate: { level: 5, either: [{ kind: 'totalQuests', count: 15 }, { kind: 'streak', days: 3 }] }, recommendedLevel: 6 },
+  // NOTE: docs 02 §6 originally listed "フォーカスゲート5回" as ch3's alternate,
+  // but focus-gate usage has no per-day history (the gate doc stores only
+  // today's state), so the condition could never be evaluated. Replaced with a
+  // cumulative-quests alternate between ch2's 15 and ch4's 60.
   { id: 3, title: 'ピコピコ峡谷', region: 'ピコピコ峡谷', theme: '通知・散漫', lordId: 'picorn', medalId: 'shuuchuu',
-    gate: { level: 9, either: [{ kind: 'streak', days: 7 }, { kind: 'focusGate', count: 5 }] }, recommendedLevel: 10 },
+    gate: { level: 9, either: [{ kind: 'streak', days: 7 }, { kind: 'totalQuests', count: 40 }] }, recommendedLevel: 10 },
   { id: 4, title: 'たべすぎ市場', region: 'たべすぎ市場', theme: '食', lordId: 'kuishinboa', medalId: 'harahachi',
     gate: { level: 14, either: [{ kind: 'totalQuests', count: 60 }, { kind: 'mealDays', days: 7 }] }, recommendedLevel: 15 },
   { id: 5, title: 'つかいすぎ廃坑', region: 'つかいすぎ廃坑', theme: '浪費', lordId: 'mudazukain', medalId: 'kotsukotsu',

@@ -21,6 +21,12 @@ import { enemyMaxHp } from '../../lib/battle/engine';
 import { canFight, spendWill, refundOnFirstLordLoss, type BattleKind } from '../../lib/battle/will';
 import { rollExtraction } from '../../lib/boss';
 import { extractionBonusFor } from '../../lib/creeds';
+import { sumMedalPassive } from '../../lib/story/medals';
+import { weekKeyForDate } from '../../lib/leveling';
+import { useMeals } from '../../hooks/useMeals';
+import { useWeights } from '../../hooks/useWeights';
+import { useSavings } from '../../hooks/useSavings';
+import { firebaseReady } from '../../firebase';
 import { SHADOW_TEMPLATES } from '../../lib/shadows';
 import { renderAvatar } from '../../lib/appearance';
 import { CONSUMABLES, consumableCount } from '../../lib/economy';
@@ -71,6 +77,15 @@ export function AdventurePanel(props: Props) {
   const [result, setResult] = useState<ResultData | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
+  // Real data sources for the feature-linked chapter gates (meals → ch4,
+  // savings → ch5, weight → ch6). Subscribed only while the panel is open,
+  // and only when Firestore is configured (the subscribe helpers throw
+  // otherwise — e.g. the demo harness runs without Firebase).
+  const dataUid = firebaseReady ? character.uid : null;
+  const mealsData = useMeals(dataUid);
+  const weightsData = useWeights(dataUid);
+  const savingsData = useSavings(dataUid);
+
   const snapshot: ProgressSnapshot = useMemo(() => {
     const totalQuests = quests.reduce((n, q) => n + q.completedDates.length, 0);
     const bestStreak = quests.reduce(
@@ -80,19 +95,27 @@ export function AdventurePanel(props: Props) {
     const weekly = quests
       .filter((q) => q.type === 'weekly')
       .reduce((n, q) => n + q.completedDates.length, 0);
+    const mealLogDays = new Set(mealsData.meals.map((m) => m.date)).size;
+    const weightLogDays = new Set(weightsData.entries.map((w) => w.date)).size;
+    const savingsWeeks = new Set(
+      savingsData.entries.filter((e) => e.kind === 'saving').map((e) => weekKeyForDate(e.date))
+    ).size;
     return {
       level: character.level,
       totalQuestsCompleted: totalQuests,
       bestStreak,
       weeklyQuestsCompleted: weekly,
+      // Focus-gate usage has no per-day history to count; no gate condition
+      // references it anymore (see chapters.ts ch3 note).
       focusGateDays: 0,
-      mealLogDays: 0,
-      savingsWeeks: 0,
-      weightLogDays: 0,
+      mealLogDays,
+      savingsWeeks,
+      weightLogDays,
       achievementsUnlocked: character.unlocked?.achievements.length ?? 0,
       medalsOwned: campaign.medals.length,
     };
-  }, [quests, character.level, character.unlocked, campaign.medals.length]);
+  }, [quests, character.level, character.unlocked, campaign.medals.length,
+      mealsData.meals, weightsData.entries, savingsData.entries]);
 
   const region = regionFor(chapter);
   const clearedIds = campaign.clearedNodes[chapter] ?? [];
@@ -145,6 +168,12 @@ export function AdventurePanel(props: Props) {
       return;
     }
     const kind = NODE_KIND_TO_BATTLE[node.kind];
+    if (!getEnemy(node.enemyId)) {
+      // Defensive: regions are generated from the registry so this shouldn't
+      // happen, but never spend Will on a battle that can't start.
+      flash('データが みつからない…');
+      return;
+    }
     if (!canFight(campaign.will, kind)) {
       flash('戦意が たりない。クエストを こなそう。');
       return;
@@ -162,7 +191,10 @@ export function AdventurePanel(props: Props) {
     let camp = campaign;
 
     if (won) {
-      const gold = goldFor(kind, chapter);
+      // こつこつメダル (goldGain): battle gold only — quest gold stays flat so
+      // the uncheck refund remains exact.
+      const goldMult = 1 + sumMedalPassive(campaign.medals, 'goldGain');
+      const gold = Math.round(goldFor(kind, chapter) * goldMult);
       await props.onAwardGold(gold);
       await props.onShadowGrowth(chapter);
 
@@ -254,7 +286,9 @@ export function AdventurePanel(props: Props) {
   // ── Render ────────────────────────────────────────────────────────────
   if (view === 'battle' && activeNode && activeNode.kind !== 'event') {
     const enemyDef = getEnemy(activeNode.enemyId);
-    if (!enemyDef) { setView('region'); return null; }
+    // handleSelectNode guards against missing enemies before spending Will;
+    // render nothing rather than setState during render if it ever slips.
+    if (!enemyDef) return null;
     const cfg = buildPlayerConfig(character, effectiveStats, campaign.medals);
     const isMirror = enemyDef.gimmick === 'mirror';
     return (

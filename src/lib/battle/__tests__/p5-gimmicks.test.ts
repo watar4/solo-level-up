@@ -10,6 +10,7 @@ const player: PlayerConfig = {
   skills: [{ id: 'basic', name: '斬', kind: 'attack', stat: 'STR', damageMultiplier: 1, healPct: 0, guaranteedCrit: false, critBonusFlat: 0, cooldown: 0 }],
   hasRevive: false, critBonus: 0, burnResist: 0,
   damageTakenMult: 1, atbBonus: 0, cooldownReduction: 0, firstStrikeBreak: 0, ultimatePower: 3.2, ultimateName: '奥義',
+  nullifyResist: 0,
 };
 
 function enemy(p: Partial<EnemyDef>): EnemyDef {
@@ -53,6 +54,44 @@ describe('P5 gimmicks & actions', () => {
     const e = enemy({ gimmick: 'uiSleep', moves: [{ id: 'g', kind: 'gimmick', weight: 1, log: 'zzz' }] });
     const events = collectUntilFx(createBattle({ player, shadows: [], enemy: e }), player);
     expect(events.some((ev) => ev.type === 'fx' && ev.fx === 'uiSleep')).toBe(true);
+  });
+
+  it('phoenix feather fires on a poison-tick death and emits a revive event', () => {
+    const withFeather: PlayerConfig = { ...player, hasRevive: true };
+    let s = createBattle({ player: withFeather, shadows: [], enemy: enemy({ attack: 1 }) });
+    // poison the player and drop them to lethal-tick range
+    s = {
+      ...s,
+      player: { ...s.player, hp: 3, statuses: [{ id: 'poison', turnsLeft: 3 }] },
+    };
+    let revived = false;
+    for (let i = 0; i < 4000 && !revived; i++) {
+      if (s.phase !== 'ticking') break;
+      const r = advance(s, 5, withFeather, HALF);
+      s = r.state;
+      if (r.events.some((e) => e.type === 'revive')) revived = true;
+    }
+    expect(revived).toBe(true);
+    expect(s.phase).not.toBe('lost');
+    expect(s.player.hp).toBe(Math.round(withFeather.maxHp * 0.5));
+    expect(s.player.reviveAvailable).toBe(false);
+  });
+
+  it('nullify drain is floored higher by medal resist', () => {
+    const drained = (resist: number) => {
+      const cfg: PlayerConfig = { ...player, nullifyResist: resist };
+      const e = enemy({ gimmick: 'nullify', moves: [{ id: 'g', kind: 'gimmick', weight: 1, log: 'いみない' }] });
+      let s = createBattle({ player: cfg, shadows: [], enemy: e });
+      for (let i = 0; i < 6000; i++) {
+        if (s.phase === 'awaiting-input') s = { ...s, phase: 'ticking', player: { ...s.player, atb: 0 } };
+        else if (s.phase === 'ticking') s = advance(s, 5, cfg, HALF).state;
+        else break;
+        if (s.turnNumber >= 8) break; // enough gimmick turns to hit the floor
+      }
+      return s.player.attackMod;
+    };
+    expect(drained(0)).toBeCloseTo(0.4);       // no medals: full drain
+    expect(drained(0.44)).toBeCloseTo(0.84);   // 11 medals: barely bites
   });
 
   it('wait action consumes the turn without acting', () => {

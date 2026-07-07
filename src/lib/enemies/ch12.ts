@@ -25,7 +25,8 @@ export const CH12_ENEMIES: EnemyDef[] = [
   }),
   c.elite('nebosukerion', 'ネボスケリオン', 'go', {
     shape: 'beast',
-    moves: [mv.atk(3), mv.atk(2, 1.0, '寝たまま 尻尾!'), mv.p2(3, 1.5, '起きて 2回行動!')],
+    // elites have no phase-2; the wake-up is HP-gated (enrage = HP<50%).
+    moves: [mv.atk(3), mv.atk(2, 1.0, '寝たまま 尻尾!'), mv.enrage(3, 1.5, '起きて 2回行動!')],
     lore: '魔王の飼い猫(巨大)。起きると2回動く。',
     loreAfter: '城の番猫として昼寝を再開(平和)。',
     quotes: { open: 'ぐるる……(寝てる)' },

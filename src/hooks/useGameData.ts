@@ -54,10 +54,10 @@ import {
 } from '../lib/achievements';
 import { newlyUnlockedSkills, type SkillDef } from '../lib/skills';
 import { ensureCampaign, defaultCampaign, type CampaignState } from '../lib/story/campaign';
-import { earnWill } from '../lib/battle/will';
+import { earnWill, ungrantWill } from '../lib/battle/will';
 import { questExpMultiplier, streakCapFor, shopDiscountFor, DEFAULT_CREED } from '../lib/creeds';
 import { migrateAppearance } from '../lib/appearance';
-import { JOB_BY_ID } from '../lib/jobs';
+import { JOB_BY_ID, TIER2_LEVEL, TIER3_LEVEL } from '../lib/jobs';
 
 export interface QuestEditPatch {
   title: string;
@@ -179,13 +179,26 @@ function ensureUnlocked(c: Character): UnlockState {
 }
 
 // One-time upgrade of pre-v2 characters: expand the appearance to the parts
-// model, seed job.base from the old class, and default the creed. Returns the
-// patch to persist, or null when nothing needs migrating.
+// model, seed job.base from the old class, default the creed, and re-derive
+// the level from lifetime EXP under the resloped curve. Returns the patch to
+// persist, or null when nothing needs migrating.
 function migrateCharacterFields(c: Character): Partial<Character> | null {
   const patch: Partial<Character> = {};
   if (c.appearance && !c.appearance.hair) patch.appearance = migrateAppearance(c.appearance);
   if (!c.job) patch.job = { base: c.appearance?.hunterClass ?? 'knight' };
   if (!c.creed) patch.creed = DEFAULT_CREED;
+  // Curve reslope (leveling.ts): the new curve is cheaper, so pre-reslope
+  // saves derive a HIGHER level from the same totalExp. Re-derive here (with
+  // the stat-point award for the gained levels) so the jump happens once at
+  // load — not as a surprise inside the first EXP refund. Upgrade-only:
+  // synthetic saves whose stored level exceeds the derived one (e.g. the
+  // master seed) are left alone.
+  const derived = levelFromTotalExp(c.totalExp);
+  if (derived.level > c.level) {
+    patch.level = derived.level;
+    patch.exp = derived.exp;
+    patch.statPoints = c.statPoints + (derived.level - c.level) * 5;
+  }
   return Object.keys(patch).length ? patch : null;
 }
 
@@ -266,6 +279,24 @@ export function useGameData(user: User | null): GameData {
   const [busyQuestId, setBusyQuestId] = useState<string | null>(null);
   // Last YYYY-MM-DD we published "gate open" for, to avoid redundant writes.
   const gateWriteRef = useRef<string | null>(null);
+
+  // Always-current mirror of `character`. The small mutators below (gold,
+  // dex, campaign, consumables …) are frequently CHAINED inside one async
+  // flow (battle rewards: gold → shadow → campaign). Each useCallback closes
+  // over the render-time `character`, so spreading that would silently revert
+  // the previous step's field both locally and — because the character doc has
+  // no live snapshot subscription — on the next absolute-value write to
+  // Firestore. Mutators therefore read from this ref and commit through
+  // commitCharacter, which updates the ref synchronously so the next awaited
+  // step in the same chain sees the fresh value.
+  const characterRef = useRef<Character | null>(null);
+  useEffect(() => {
+    characterRef.current = character;
+  }, [character]);
+  const commitCharacter = useCallback((next: Character) => {
+    characterRef.current = next;
+    setCharacter(next);
+  }, []);
 
   const enqueue = useCallback((events: SystemEvent[]) => {
     if (events.length) setPendingEvents((prev) => [...prev, ...events]);
@@ -403,14 +434,19 @@ export function useGameData(user: User | null): GameData {
         appearance
       );
       // Seed job (from chosen class) + creed alongside the base character.
+      // Awaited so the chosen creed can't be silently lost to a failed
+      // fire-and-forget write (the load-time migration would then backfill
+      // the default creed instead of the user's pick).
       const job = { base: appearance?.hunterClass ?? 'knight' as const };
       const chosenCreed = creed ?? DEFAULT_CREED;
       const withMeta: Character = { ...c, job, creed: chosenCreed };
-      setCharacter(withMeta);
+      commitCharacter(withMeta);
       setNeedsCharacter(false);
-      updateCharacter(user.uid, { job, creed: chosenCreed }).catch((err) =>
-        console.error('[create] job/creed seed failed', err)
-      );
+      try {
+        await updateCharacter(user.uid, { job, creed: chosenCreed });
+      } catch (err) {
+        console.error('[create] job/creed seed failed', err);
+      }
     },
     [user]
   );
@@ -527,10 +563,10 @@ export function useGameData(user: User | null): GameData {
           title: updated.title,
           campaign: updated.campaign,
         }),
-        logCompletion(user.uid, quest.id, expGained, today),
+        logCompletion(user.uid, quest.id, expGained, today, willRes.granted),
       ]);
 
-      setCharacter(updated);
+      commitCharacter(updated);
       enqueue(eventsAll);
     },
     [user, character, quests, enqueue]
@@ -538,32 +574,59 @@ export function useGameData(user: User | null): GameData {
 
   const uncompleteQuest = useCallback(
     async (quest: Quest): Promise<void> => {
-      if (!user || !character) return;
+      const cur = characterRef.current;
+      if (!user || !cur) return;
       const today = todayKey();
+
+      // Refund exactly what today's completion granted, read from the
+      // completion log. Recomputing from the current creed/medals/hour would
+      // let a user farm EXP by toggling (complete under a bonus, switch it
+      // off, uncheck for a smaller refund — or the honest-user inverse).
+      const logs = await getCompletionsForQuest(user.uid, quest.id);
+      const todaysLogs = logs.filter((l) => l.date === today);
       const baseExp = DIFFICULTY_EXP[quest.difficulty];
-      const expRefund = Math.round(
-        baseExp * streakMultiplier(quest.type, quest.streak, streakCapFor(character))
-          * questExpMultiplier(character, quest, new Date().getHours())
-      );
+      // Fallback (legacy: completion predates the log, should not happen in
+      // practice): recompute with the current modifiers.
+      const expRefund = todaysLogs.length
+        ? todaysLogs.reduce((sum, l) => sum + l.expGained, 0)
+        : Math.round(
+            baseExp * streakMultiplier(quest.type, quest.streak, streakCapFor(cur))
+              * questExpMultiplier(cur, quest, new Date().getHours())
+          );
+      const willRefund = todaysLogs.reduce((sum, l) => sum + (l.willGained ?? 0), 0);
       const statRefund = STAT_PER_DIFFICULTY[quest.difficulty] ?? 1;
 
       const newDates = quest.completedDates.filter((d) => d !== today);
       const newStreak = recomputeStreak(quest.type, newDates);
 
-      const newTotalExp = Math.max(0, character.totalExp - expRefund);
+      const newTotalExp = Math.max(0, cur.totalExp - expRefund);
       const { level: newLevel, exp: newExp } = levelFromTotalExp(newTotalExp);
-      const levelDiff = newLevel - character.level;
+      const levelDiff = newLevel - cur.level;
       const newStats: Record<StatKey, number> = {
-        ...character.stats,
-        [quest.targetStat]: Math.max(0, character.stats[quest.targetStat] - statRefund),
+        ...cur.stats,
+        [quest.targetStat]: Math.max(0, cur.stats[quest.targetStat] - statRefund),
       };
-      const newStatPoints = Math.max(0, character.statPoints + levelDiff * 5);
+      const newStatPoints = Math.max(0, cur.statPoints + levelDiff * 5);
       // Gold is flat per difficulty (no streak multiplier), so the refund is
       // exact — clamped only in case older completions predate the economy.
-      const newGold = Math.max(0, (character.gold ?? 0) - QUEST_GOLD[quest.difficulty]);
+      const newGold = Math.max(0, (cur.gold ?? 0) - QUEST_GOLD[quest.difficulty]);
+      // Take back the Will this completion granted (from the log — closes the
+      // check→uncheck→check Will farm).
+      const camp = ensureCampaign(cur.campaign, today);
+      const newCampaign: CampaignState = { ...camp, will: ungrantWill(camp.will, willRefund, today) };
 
-      const logs = await getCompletionsForQuest(user.uid, quest.id);
-      const todaysLogIds = logs.filter((l) => l.date === today).map((l) => l.id);
+      const todaysLogIds = todaysLogs.map((l) => l.id);
+      const updated: Character = {
+        ...cur,
+        level: newLevel,
+        exp: newExp,
+        totalExp: newTotalExp,
+        stats: newStats,
+        statPoints: newStatPoints,
+        gold: newGold,
+        campaign: newCampaign,
+        lastSeenAt: Date.now(),
+      };
 
       await Promise.all([
         updateQuest(quest.id, {
@@ -578,23 +641,15 @@ export function useGameData(user: User | null): GameData {
           stats: newStats,
           statPoints: newStatPoints,
           gold: newGold,
-          lastSeenAt: Date.now(),
+          campaign: newCampaign,
+          lastSeenAt: updated.lastSeenAt,
         }),
         todaysLogIds.length ? deleteCompletions(todaysLogIds) : Promise.resolve(),
       ]);
 
-      setCharacter({
-        ...character,
-        level: newLevel,
-        exp: newExp,
-        totalExp: newTotalExp,
-        stats: newStats,
-        statPoints: newStatPoints,
-        gold: newGold,
-        lastSeenAt: Date.now(),
-      });
+      commitCharacter(updated);
     },
-    [user, character]
+    [user, commitCharacter]
   );
 
   const toggleQuest = useCallback(
@@ -758,26 +813,38 @@ export function useGameData(user: User | null): GameData {
 
   const updateCreed = useCallback(
     async (creed: string): Promise<void> => {
-      if (!user || !character) return;
-      setCharacter({ ...character, creed });
+      const cur = characterRef.current;
+      if (!user || !cur) return;
+      commitCharacter({ ...cur, creed });
       await updateCharacter(user.uid, { creed });
     },
-    [user, character]
+    [user, commitCharacter]
   );
 
   const advanceJob = useCallback(
     async (nodeId: string): Promise<void> => {
-      if (!user || !character) return;
+      const cur = characterRef.current;
+      if (!user || !cur) return;
       const node = JOB_BY_ID[nodeId];
       if (!node) return;
-      const base = character.job?.base ?? character.appearance?.hunterClass ?? 'knight';
-      const job = { ...(character.job ?? { base }), base };
-      if (node.tier === 2) job.tier2 = nodeId;
-      else if (node.tier === 3) job.tier3 = nodeId;
-      setCharacter({ ...character, job });
+      const base = cur.job?.base ?? cur.appearance?.hunterClass ?? 'knight';
+      const job = { ...(cur.job ?? { base }), base };
+      // Validate the advancement: level gate, correct lineage, not already
+      // advanced. The UI (advancementOptions) enforces the same rules; this
+      // guards the persistence layer against arbitrary node ids.
+      if (node.tier === 2) {
+        if (cur.level < TIER2_LEVEL || node.parent !== base || job.tier2) return;
+        job.tier2 = nodeId;
+      } else if (node.tier === 3) {
+        if (cur.level < TIER3_LEVEL || !job.tier2 || node.parent !== job.tier2 || job.tier3) return;
+        job.tier3 = nodeId;
+      } else {
+        return; // tier-1 nodes are not an advancement target
+      }
+      commitCharacter({ ...cur, job });
       await updateCharacter(user.uid, { job });
     },
-    [user, character]
+    [user, commitCharacter]
   );
 
   const setEquippedSkills = useCallback(
@@ -912,23 +979,19 @@ export function useGameData(user: User | null): GameData {
 
   const awardExp = useCallback(
     async (amount: number): Promise<void> => {
-      if (!user || !character || amount <= 0) return;
-      const oldLevel = character.level;
-      const result = applyExp(
-        character.level,
-        character.exp,
-        character.totalExp,
-        amount
-      );
+      const cur = characterRef.current;
+      if (!user || !cur || amount <= 0) return;
+      const oldLevel = cur.level;
+      const result = applyExp(cur.level, cur.exp, cur.totalExp, amount);
       const updated: Character = {
-        ...character,
+        ...cur,
         level: result.level,
         exp: result.exp,
         totalExp: result.totalExp,
-        statPoints: character.statPoints + result.statPointsGained,
+        statPoints: cur.statPoints + result.statPointsGained,
         lastSeenAt: Date.now(),
       };
-      setCharacter(updated);
+      commitCharacter(updated);
       await updateCharacter(user.uid, {
         level: updated.level,
         exp: updated.exp,
@@ -964,110 +1027,116 @@ export function useGameData(user: User | null): GameData {
         enqueue(events);
       }
     },
-    [user, character, enqueue]
+    [user, commitCharacter, enqueue]
   );
 
   // ----- gold economy -------------------------------------------------
 
   const addGold = useCallback(
     async (amount: number): Promise<void> => {
-      if (!user || !character || amount <= 0) return;
-      const newGold = (character.gold ?? 0) + Math.round(amount);
-      setCharacter({ ...character, gold: newGold });
+      const cur = characterRef.current;
+      if (!user || !cur || amount <= 0) return;
+      const newGold = (cur.gold ?? 0) + Math.round(amount);
+      commitCharacter({ ...cur, gold: newGold });
       await updateCharacter(user.uid, { gold: newGold });
     },
-    [user, character]
+    [user, commitCharacter]
   );
 
   const spendGold = useCallback(
     async (amount: number): Promise<boolean> => {
-      if (!user || !character || amount <= 0) return false;
-      const wallet = character.gold ?? 0;
+      const cur = characterRef.current;
+      if (!user || !cur || amount <= 0) return false;
+      const wallet = cur.gold ?? 0;
       if (wallet < amount) return false;
       const newGold = wallet - Math.round(amount);
-      setCharacter({ ...character, gold: newGold });
+      commitCharacter({ ...cur, gold: newGold });
       try {
         await updateCharacter(user.uid, { gold: newGold });
         return true;
       } catch (err) {
         console.error('[gold:spend] failed, rolling back', err);
-        setCharacter(character);
+        commitCharacter(cur);
         throw err;
       }
     },
-    [user, character]
+    [user, commitCharacter]
   );
 
   const buyConsumable = useCallback(
     async (consumableId: string): Promise<boolean> => {
-      if (!user || !character) return false;
+      const cur = characterRef.current;
+      if (!user || !cur) return false;
       const template = getConsumable(consumableId);
       if (!template) return false;
-      const price = Math.round(template.price * (1 - shopDiscountFor(character))); // 倹約家 creed
-      const wallet = character.gold ?? 0;
+      const price = Math.round(template.price * (1 - shopDiscountFor(cur))); // 倹約家 creed
+      const wallet = cur.gold ?? 0;
       if (wallet < price) return false;
       const consumables = {
-        ...(character.consumables ?? {}),
-        [consumableId]: (character.consumables?.[consumableId] ?? 0) + 1,
+        ...(cur.consumables ?? {}),
+        [consumableId]: (cur.consumables?.[consumableId] ?? 0) + 1,
       };
       const newGold = wallet - price;
-      setCharacter({ ...character, gold: newGold, consumables });
+      commitCharacter({ ...cur, gold: newGold, consumables });
       try {
         await updateCharacter(user.uid, { gold: newGold, consumables });
         return true;
       } catch (err) {
         console.error('[shop:buy] failed, rolling back', err);
-        setCharacter(character);
+        commitCharacter(cur);
         throw err;
       }
     },
-    [user, character]
+    [user, commitCharacter]
   );
 
   const useConsumable = useCallback(
     async (consumableId: string): Promise<boolean> => {
-      if (!user || !character) return false;
-      const held = character.consumables?.[consumableId] ?? 0;
+      const cur = characterRef.current;
+      if (!user || !cur) return false;
+      const held = cur.consumables?.[consumableId] ?? 0;
       if (held <= 0) return false;
-      const consumables = { ...(character.consumables ?? {}), [consumableId]: held - 1 };
-      setCharacter({ ...character, consumables });
+      const consumables = { ...(cur.consumables ?? {}), [consumableId]: held - 1 };
+      commitCharacter({ ...cur, consumables });
       try {
         await updateCharacter(user.uid, { consumables });
         return true;
       } catch (err) {
         console.error('[item:use] failed, rolling back', err);
-        setCharacter(character);
+        commitCharacter(cur);
         throw err;
       }
     },
-    [user, character]
+    [user, commitCharacter]
   );
 
   const recordDexShadow = useCallback(
     async (templateId: string): Promise<void> => {
-      if (!user || !character) return;
-      const seen = character.dexShadows ?? [];
+      const cur = characterRef.current;
+      if (!user || !cur) return;
+      const seen = cur.dexShadows ?? [];
       if (seen.includes(templateId)) return;
       const dexShadows = [...seen, templateId];
-      setCharacter({ ...character, dexShadows });
+      commitCharacter({ ...cur, dexShadows });
       await updateCharacter(user.uid, { dexShadows });
     },
-    [user, character]
+    [user, commitCharacter]
   );
 
   const saveCampaign = useCallback(
     async (next: CampaignState): Promise<void> => {
-      if (!user || !character) return;
-      setCharacter({ ...character, campaign: next });
+      const cur = characterRef.current;
+      if (!user || !cur) return;
+      commitCharacter({ ...cur, campaign: next });
       try {
         await updateCharacter(user.uid, { campaign: next });
       } catch (err) {
         console.error('[campaign:save] failed, rolling back', err);
-        setCharacter(character);
+        commitCharacter(cur);
         throw err;
       }
     },
-    [user, character]
+    [user, commitCharacter]
   );
 
   // ----- real-world savings config --------------------------------------

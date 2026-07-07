@@ -11,6 +11,7 @@ const player: PlayerConfig = {
   skills: [{ id: 'b', name: '斬', kind: 'attack', stat: 'STR', damageMultiplier: 1, healPct: 0, guaranteedCrit: false, critBonusFlat: 0, cooldown: 0 }],
   hasRevive: false, critBonus: 0, burnResist: 0,
   damageTakenMult: 1, atbBonus: 0, cooldownReduction: 0, firstStrikeBreak: 0, ultimatePower: 3.2, ultimateName: 'x',
+  nullifyResist: 0,
 };
 function enemy(p: Partial<EnemyDef> = {}): EnemyDef {
   return { id: 'e', name: 'E', tier: 'lord', chapter: 1, element: 'ma', hpTurns: 40, breakGauge: 6, attack: 3, agility: 4, critChance: 0,

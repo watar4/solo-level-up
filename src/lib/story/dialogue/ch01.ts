@@ -27,9 +27,6 @@ export const CH01_DIALOGUE: Record<string, DialogueLine[]> = {
     { speaker: 'aria', window: 'system', text: '弱点は「心(しん)」属性。眠りには「めざましの鐘」が 効きます。' },
     { speaker: 'aria', window: 'system', text: '……準備は いいですか? わたしは、いつでも。' },
   ],
-  'ch1-lord-open': [
-    { speaker: 'enemy', name: 'まくら大公スヤリン', text: 'んん……いま いいとこ なんだけど……' },
-  ],
   'ch1-lord-clear': [
     { speaker: 'enemy', name: 'スヤリン', text: 'えっ……もう あさ!? ……あさだ!' },
     { speaker: 'narration', text: 'スヤリンは 飛び起き、平原に 朝日が もどった。' },

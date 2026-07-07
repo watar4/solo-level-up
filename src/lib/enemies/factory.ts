@@ -12,7 +12,10 @@ export const mv = {
   debuff: (weight: number, log = 'よわらせてきた!'): EnemyMove => ({ id: 'd', kind: 'debuff', weight, log }),
   status: (weight: number, status: StatusId, chance: number, log: string): EnemyMove => ({ id: 's', kind: 'status', weight, status, statusChance: chance, log }),
   gimmick: (weight: number, log: string): EnemyMove => ({ id: 'g', kind: 'gimmick', weight, log }),
+  // phase2-gated — only meaningful on lords (the factory gives phases:2 to
+  // lords only). For non-lords use `enrage` (HP<50%) instead.
   p2: (weight: number, power: number, log: string): EnemyMove => ({ id: 'p2', kind: 'attack', weight, power, condition: 'phase2', log }),
+  enrage: (weight: number, power: number, log: string): EnemyMove => ({ id: 'e', kind: 'attack', weight, power, condition: 'hpBelow50', log }),
   opening: (weight: number, power: number, log: string): EnemyMove => ({ id: 'o', kind: 'attack', weight, power, condition: 'opening', log }),
 };
 

@@ -60,6 +60,16 @@ describe('campaign content integrity (chapters 1-12)', () => {
     }
   });
 
+  it('no non-lord enemy carries a phase2-conditioned move (it would never fire)', () => {
+    // Only lords get phases:2 from the factory; a phase2 condition on a mob or
+    // elite is dead content (this caught ch12's ネボスケリオン).
+    for (const e of ALL_ENEMIES) {
+      if (e.tier === 'lord' || e.tier === 'king') continue;
+      const dead = e.moves.filter((m) => m.condition === 'phase2');
+      expect(dead, `${e.id} has phase2-gated moves but ${e.tier}s never reach phase 2`).toHaveLength(0);
+    }
+  });
+
   it('all kit shape grids are 16×16', () => {
     for (const [name, grid] of Object.entries(SHAPE_GRIDS)) {
       expect(grid.length, `${name} height`).toBe(16);

@@ -25,7 +25,11 @@ export function RegionMapScene({ region, clearedIds, recommendedLevel, willStock
         const isCleared = cleared.has(node.id);
         const isCurrent = current?.id === node.id;
         const enemy = 'enemyId' in node ? getEnemy(node.enemyId) : undefined;
-        const willCost = node.kind === 'lord' ? WILL_COST.lord : node.kind === 'event' ? 0 : WILL_COST.mob;
+        const willCost =
+          node.kind === 'event' ? 0
+            : node.kind === 'lord' ? WILL_COST.lord
+              : node.kind === 'elite' ? WILL_COST.elite
+                : WILL_COST.mob;
         const needWill = willCost > 0 && willStock < willCost;
 
         return (

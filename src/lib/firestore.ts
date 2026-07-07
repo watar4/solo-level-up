@@ -125,13 +125,18 @@ export async function logCompletion(
   uid: string,
   questId: string,
   expGained: number,
-  date: string
+  date: string,
+  // Will (戦意) actually granted by this completion. Persisted so an uncheck
+  // can refund exactly what was given (creed/medal EXP multipliers make
+  // recomputation unreliable — see uncompleteQuest).
+  willGained = 0
 ): Promise<void> {
   await addDoc(collection(requireDb(), 'completions'), {
     uid,
     questId,
     expGained,
     date,
+    willGained,
     at: serverTimestamp() as unknown as Timestamp,
   });
 }
@@ -140,6 +145,7 @@ export interface CompletionLog {
   id: string;
   expGained: number;
   date?: string;
+  willGained?: number; // absent on legacy docs → treat as 0
 }
 
 export async function getCompletionsForQuest(
@@ -153,8 +159,8 @@ export async function getCompletionsForQuest(
   );
   const snap = await getDocs(q);
   return snap.docs.map((d) => {
-    const data = d.data() as { expGained?: number; date?: string };
-    return { id: d.id, expGained: data.expGained ?? 0, date: data.date };
+    const data = d.data() as { expGained?: number; date?: string; willGained?: number };
+    return { id: d.id, expGained: data.expGained ?? 0, date: data.date, willGained: data.willGained };
   });
 }
 

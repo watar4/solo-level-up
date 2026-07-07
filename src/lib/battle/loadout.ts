@@ -58,6 +58,8 @@ export function buildPlayerConfig(
     firstStrikeBreak: mods.firstStrikeBreak,
     ultimatePower: mods.ultimatePower,
     ultimateName: mods.ultimateName,
+    // ch11 counter: each medal blunts the nullify drain (11 medals ≈ 0.44).
+    nullifyResist: medals.length * 0.04,
   };
 }
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import type { DialogueLine } from '../../lib/story/dialogue/ch01';
 
@@ -21,11 +21,15 @@ interface Props {
 export function StoryDialog({ lines, onDone }: Props) {
   const [i, setI] = useState(0);
   const line = lines[i];
-  if (!line) {
-    // empty script → close immediately
-    onDone();
-    return null;
-  }
+
+  // Empty script → close, but via an effect: onDone triggers parent setState
+  // (and async campaign saves), which must not run during render.
+  const empty = !line;
+  useEffect(() => {
+    if (empty) onDone();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [empty]);
+  if (empty) return null;
 
   const advance = () => {
     if (i + 1 >= lines.length) onDone();
