@@ -2,8 +2,15 @@ import type { Rank } from '../types';
 
 // EXP needed to advance FROM level L to L+1.
 // Rises smoothly so early levels feel fast and late levels meaningful.
+//
+// Curve reslope for the story campaign (docs/redesign/03-battle-system.md §8-2):
+// the old 60·L^1.55+40 put Lv60 at ~770k lifetime EXP (~2.8 years at the
+// assumed ~750 EXP/day). 45·L^1.40+55 lands Lv60 at ~340k → ~1 year, matching
+// the 12-chapter pacing gates. Because levels are always re-derived from
+// `totalExp` (levelFromTotalExp), changing this formula is data-safe: existing
+// players simply recompute to a slightly higher level on next load.
 export function expForLevel(level: number): number {
-  return Math.floor(60 * Math.pow(level, 1.55) + 40);
+  return Math.floor(45 * Math.pow(level, 1.4) + 55);
 }
 
 export function rankForLevel(level: number): Rank {
