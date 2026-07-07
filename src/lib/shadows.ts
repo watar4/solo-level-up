@@ -51,6 +51,23 @@ export interface ShadowTemplate {
   flavor?: string;
 }
 
+// Battle role, derived from the shadow's primary stat (docs 03 §6). Drives its
+// behaviour under each tactic. VIT shadows mend, INT shadows enfeeble the foe,
+// the rest strike.
+export type ShadowRole = 'attacker' | 'healer' | 'support';
+
+export const SHADOW_ROLE: Record<StatKey, ShadowRole> = {
+  STR: 'attacker', AGI: 'attacker', PER: 'attacker', VIT: 'healer', INT: 'support',
+};
+
+export const SHADOW_ROLE_LABEL: Record<ShadowRole, string> = {
+  attacker: 'アタッカー', healer: 'ヒーラー', support: 'サポート',
+};
+
+export function shadowRole(stat: StatKey): ShadowRole {
+  return SHADOW_ROLE[stat];
+}
+
 // 5 stats × 4 rarities = 20 base templates. Flavor names lean Solo-Leveling-ish
 // without lifting any direct trademarked terms outside the loose homage.
 export const SHADOW_TEMPLATES: ShadowTemplate[] = [

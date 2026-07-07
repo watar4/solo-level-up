@@ -5,6 +5,8 @@ import {
   RARITY_COLOR,
   RARITY_LABEL,
   SHADOW_EQUIP_LIMIT,
+  SHADOW_ROLE_LABEL,
+  shadowRole,
 } from '../lib/shadows';
 import {
   nextEvolutionLevel,
@@ -31,7 +33,7 @@ const RARITY_ORDER: ShadowRarity[] = ['legendary', 'epic', 'rare', 'normal'];
 
 function combatLine(s: Shadow): string {
   const c = shadowCombatPower(s);
-  return `${s.stat}型 · ATK ${c.attack} · 速 ${c.atbSpeed.toFixed(1)}`;
+  return `${SHADOW_ROLE_LABEL[shadowRole(s.stat)]} · ATK ${c.attack} · 速 ${c.atbSpeed.toFixed(1)}`;
 }
 
 export function ShadowArmyPanel({

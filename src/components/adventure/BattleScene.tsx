@@ -5,13 +5,17 @@ import {
   createBattle,
   advance,
   playerAction,
+  setTactic,
   ULTIMATE_READY,
+  TACTIC_LABELS,
   type PlayerConfig,
   type ShadowConfig,
   type BattleState,
   type BattleEvent,
   type PlayerAction,
+  type Tactic,
 } from '../../lib/battle/engine';
+import { SHADOW_ROLE_LABEL } from '../../lib/shadows';
 import type { EnemyDef } from '../../lib/enemies/types';
 import type { StatusId } from '../../lib/battle/status';
 import {
@@ -63,7 +67,7 @@ export function BattleScene(props: Props) {
     enemy.quotes?.open ? [enemy.quotes.open] : []
   );
   const [popups, setPopups] = useState<Popup[]>([]);
-  const [menu, setMenu] = useState<'root' | 'skill' | 'item'>('root');
+  const [menu, setMenu] = useState<'root' | 'skill' | 'item' | 'tactic'>('root');
   const [items, setItems] = useState<UsableItem[]>(props.items);
   const [shake, setShake] = useState(false);
   const [cutin, setCutin] = useState<string | null>(null);
@@ -170,6 +174,13 @@ export function BattleScene(props: Props) {
     if (!ok) return;
     setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, count: i.count - 1 } : i)));
     act({ kind: 'item', effect: item.effect });
+  };
+
+  // Switch party tactic — costs no turn, so we stay on the player's input.
+  const chooseTactic = (t: Tactic) => {
+    stateRef.current = setTactic(stateRef.current, t);
+    setMenu('root');
+    force();
   };
 
   const s = stateRef.current;
@@ -341,12 +352,15 @@ export function BattleScene(props: Props) {
           <PopupLayer popups={popups.filter((p) => p.target === 'player')} />
         </div>
         {s.shadows.length > 0 && (
-          <div className="mt-1 flex gap-1">
-            {s.shadows.map((sh) => (
-              <span key={sh.key} className="rounded-sm border border-sys-border/40 bg-black/20 px-1.5 py-0.5 text-[9px] text-sys-muted">
-                🩶 {sh.name}
-              </span>
-            ))}
+          <div className="mt-1 space-y-1">
+            <div className="flex flex-wrap gap-1">
+              {s.shadows.map((sh) => (
+                <span key={sh.key} className="rounded-sm border border-sys-border/40 bg-black/20 px-1.5 py-0.5 text-[9px] text-sys-muted">
+                  🩶 {sh.name} <span className="text-sys-accent/70">{SHADOW_ROLE_LABEL[sh.role]}</span>
+                </span>
+              ))}
+            </div>
+            <div className="text-[9px] text-sys-muted">作戦:<span className="text-sys-text/80">{TACTIC_LABELS[s.tactic]}</span></div>
           </div>
         )}
       </div>
@@ -367,6 +381,15 @@ export function BattleScene(props: Props) {
               disabled={s.ultimate < ULTIMATE_READY}
               onClick={() => act({ kind: 'ultimate' })}
             />
+            {s.shadows.length > 0 && <Cmd label="さくせん" onClick={() => setMenu('tactic')} />}
+          </div>
+        )}
+        {awaiting && menu === 'tactic' && (
+          <div className="grid grid-cols-1 gap-2">
+            {(Object.keys(TACTIC_LABELS) as Tactic[]).map((t) => (
+              <Cmd key={t} label={`${s.tactic === t ? '▶ ' : ''}${TACTIC_LABELS[t]}`} highlight={s.tactic === t} onClick={() => chooseTactic(t)} />
+            ))}
+            <Cmd label="← もどる" onClick={() => setMenu('root')} />
           </div>
         )}
         {awaiting && menu === 'skill' && (

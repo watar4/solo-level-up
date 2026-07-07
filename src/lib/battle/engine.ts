@@ -76,13 +76,27 @@ export interface PlayerConfig {
   ultimateName: string;
 }
 
+export type ShadowRole = 'attacker' | 'healer' | 'support';
+
+// Party tactic (作戦指示) — a lightweight gambit that shapes what each shadow
+// does on its turn, based on its role (docs 03 §6). Switchable mid-battle,
+// costs no turn.
+export type Tactic = 'attack' | 'heal' | 'support' | 'break';
+
+export const TACTIC_LABELS: Record<Tactic, string> = {
+  attack: 'ガンガンいこうぜ',
+  heal: 'いのちだいじに',
+  support: 'じゅんびをととのえろ',
+  break: 'くずしをねらえ',
+};
+
 export interface ShadowConfig {
   id: string;
   name: string;
   element: Element;
   attack: number;   // per-hit base (from shadowCombatPower)
   speed: number;    // ATB fill speed (from shadowCombatPower.atbSpeed)
-  role: 'attacker' | 'healer';
+  role: ShadowRole;
 }
 
 // ── Live combat state ────────────────────────────────────────────────────
@@ -109,7 +123,7 @@ export interface PlayerActor extends Actor {
 export interface ShadowActor extends Actor {
   element: Element;
   attack: number;
-  role: 'attacker' | 'healer';
+  role: ShadowRole;
 }
 
 export interface EnemyActor extends Actor {
@@ -136,6 +150,7 @@ export interface BattleState {
   ultimate: number;   // 0..100
   turnNumber: number; // increments on each enemy turn (drives everyNTurns)
   itemAttackBoost: number; // power-crystal: multiplier for the next player attack
+  tactic: Tactic;     // party tactic for the shadows (作戦指示)
 }
 
 // ── Events emitted for the UI ─────────────────────────────────────────────
@@ -272,7 +287,13 @@ export function createBattle(params: {
     ultimate: 0,
     turnNumber: 0,
     itemAttackBoost: 1,
+    tactic: 'attack',
   };
+}
+
+// Switch the party tactic. Instant — costs no turn, does not touch ATB.
+export function setTactic(state: BattleState, tactic: Tactic): BattleState {
+  return { ...state, tactic };
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -517,15 +538,47 @@ function resolveShadowTurn(state: BattleState, key: string, rng: () => number): 
   let enemy = { ...state.enemy };
   let player = { ...state.player };
 
-  if (s.role === 'healer' && pctHp(player) < 0.5) {
+  const tactic = state.tactic;
+  const isWeak = affinity(s.element, enemy.element) === 'weak';
+  const playerLow = pctHp(player) < 0.5;
+
+  // Decide this shadow's action from the tactic × its role (docs 03 §6).
+  type Act = 'attack' | 'heal' | 'support' | 'wait';
+  let act: Act;
+  switch (tactic) {
+    case 'heal': // いのちだいじに
+      act = s.role === 'healer' && playerLow ? 'heal' : 'attack';
+      break;
+    case 'support': // じゅんびをととのえろ
+      act = s.role === 'support' ? 'support' : s.role === 'healer' && playerLow ? 'heal' : 'attack';
+      break;
+    case 'break': // くずしをねらえ — only weakness-element shadows strike
+      act = isWeak ? 'attack' : 'wait';
+      break;
+    case 'attack': // ガンガンいこうぜ
+    default:
+      act = 'attack';
+      break;
+  }
+
+  if (act === 'wait') {
+    events.push({ type: 'log', text: `${s.name}は くずしを ねらって 待機` });
+    return { state: { ...state, shadows }, events };
+  }
+  if (act === 'heal') {
     const amount = Math.round(player.maxHp * 0.12);
     player = { ...player, hp: Math.min(player.maxHp, player.hp + amount) };
     events.push({ type: 'log', text: `${s.name}が かばった!` });
     events.push({ type: 'heal', target: 'player', amount });
     return { state: { ...state, shadows, player }, events };
   }
+  if (act === 'support') {
+    enemy = { ...enemy, attackMod: Math.max(0.6, enemy.attackMod - 0.12) };
+    events.push({ type: 'log', text: `${s.name}が てきを よわらせた!` });
+    return { state: { ...state, shadows, enemy }, events };
+  }
 
-  // attacker: simple hit scaled by shadow attack + affinity
+  // attack: hit scaled by shadow attack + affinity
   const aff = affinity(s.element, enemy.element);
   const variance = 0.85 + rng() * 0.3;
   let dmg = Math.max(1, Math.round(s.attack * affinityMultiplier(s.element, enemy.element) * variance));

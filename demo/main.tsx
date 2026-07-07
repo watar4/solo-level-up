@@ -3,7 +3,13 @@ import { createRoot } from 'react-dom/client';
 import '../src/index.css';
 import { AdventurePanel } from '../src/components/adventure/AdventurePanel';
 import { defaultCampaign, type CampaignState } from '../src/lib/story/campaign';
-import type { Character, Quest } from '../src/types';
+import type { Character, Quest, Shadow } from '../src/types';
+
+const demoShadows: Shadow[] = [
+  { id: 's1', uid: 'demo', templateId: 'vit-e', name: '影の守護神', stat: 'VIT', rarity: 'epic', equipped: true, createdAt: 0, level: 12, exp: 0 },
+  { id: 's2', uid: 'demo', templateId: 'agi-e', name: '影の風狼', stat: 'AGI', rarity: 'epic', equipped: true, createdAt: 0, level: 12, exp: 0 },
+  { id: 's3', uid: 'demo', templateId: 'int-r', name: '影の魔導士', stat: 'INT', rarity: 'rare', equipped: true, createdAt: 0, level: 10, exp: 0 },
+];
 
 // Standalone demo harness — mounts the real AdventurePanel with mock data so
 // the campaign can be driven end-to-end in a browser without Firebase auth.
@@ -57,7 +63,7 @@ function Demo() {
       effectiveStats={character.stats}
       quests={mockQuests}
       campaign={campaign}
-      equippedShadows={[]}
+      equippedShadows={demoShadows}
       // Keep Will topped up so the full chapter can be walked in one demo run.
       onSaveCampaign={async (c) => setCampaign({ ...c, will: { ...c.will, stock: 3 } })}
       onAwardGold={async () => {}}

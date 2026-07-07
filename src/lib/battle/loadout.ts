@@ -5,6 +5,7 @@ import type { Character, Shadow, StatKey } from '../../types';
 import { playerMaxHp } from '../boss';
 import { effectiveEquippedSkills, getSkill, type BattleSkill } from '../battleSkills';
 import { shadowCombatPower } from '../shadowGrowth';
+import { shadowRole } from '../shadows';
 import { consumableCount } from '../economy';
 import { sumMedalPassive, type MedalId } from '../story/medals';
 import { type PlayerConfig, type PlayerSkill, type ShadowConfig } from './engine';
@@ -69,7 +70,7 @@ export function buildShadowConfigs(equipped: Shadow[]): ShadowConfig[] {
       element: STAT_TO_ELEMENT[s.stat],
       attack: power.attack,
       speed: power.atbSpeed,
-      role: 'attacker',
+      role: shadowRole(s.stat),
     };
   });
 }
