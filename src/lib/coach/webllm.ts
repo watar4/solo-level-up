@@ -23,11 +23,14 @@ export interface CoachModelOption {
 // Preferred model ids in priority order. The list web-llm actually ships from
 // changes across versions, so we resolve against the live model_list at runtime
 // (see listAvailableModels) and never hard-depend on any single id existing.
+// Ordered smallest-first: on phones the model must fit in limited GPU memory or
+// inference OOM-crashes the tab. Lead with the lightest so mobile users pick a
+// model that actually runs; heavier/higher-quality options are for desktops.
 const PREFERRED: CoachModelOption[] = [
-  { id: 'Qwen2.5-1.5B-Instruct-q4f16_1-MLC', label: 'Qwen2.5 1.5B', sizeLabel: '約1.0GB', note: '日本語と軽さのバランス(既定)' },
-  { id: 'Llama-3.2-1B-Instruct-q4f16_1-MLC', label: 'Llama 3.2 1B', sizeLabel: '約0.7GB', note: '軽量。非力な端末向け' },
-  { id: 'Qwen2.5-0.5B-Instruct-q4f16_1-MLC', label: 'Qwen2.5 0.5B', sizeLabel: '約0.4GB', note: '最軽量。iOS の試験用' },
-  { id: 'gemma-2-2b-it-q4f16_1-MLC', label: 'Gemma 2 2B', sizeLabel: '約1.4GB', note: '高品質。デスクトップ向け' },
+  { id: 'Qwen2.5-0.5B-Instruct-q4f16_1-MLC', label: 'Qwen2.5 0.5B', sizeLabel: '約0.4GB', note: 'スマホ推奨。最軽量で落ちにくい' },
+  { id: 'Llama-3.2-1B-Instruct-q4f16_1-MLC', label: 'Llama 3.2 1B', sizeLabel: '約0.7GB', note: '軽量。中位の端末向け' },
+  { id: 'Qwen2.5-1.5B-Instruct-q4f16_1-MLC', label: 'Qwen2.5 1.5B', sizeLabel: '約1.0GB', note: '日本語が得意。PC・高性能端末向け' },
+  { id: 'gemma-2-2b-it-q4f16_1-MLC', label: 'Gemma 2 2B', sizeLabel: '約1.4GB', note: '高品質。PC向け(スマホは非推奨)' },
 ];
 
 const SYSTEM_PROMPT = `あなたは育成アプリ「ソロ・レベルアップ」に組み込まれた習慣化コーチ「アリア」です。
@@ -65,11 +68,16 @@ export interface LoadProgress {
   progress: number; // 0..1
 }
 
+// How many recent chat messages to send to the model. Small models have a
+// small KV cache; a long transcript inflates memory and can OOM-crash the tab
+// mid-inference. Keep only the last few turns.
+const MAX_HISTORY = 6;
+
 // Build a chat message array for the model from context + history.
 function toMessages(ctx: CoachContext, history: CoachMessage[]) {
   return [
     { role: 'system' as const, content: `${SYSTEM_PROMPT}\n\n# 現在の記録\n${contextToPrompt(ctx)}` },
-    ...history.map((m) => ({
+    ...history.slice(-MAX_HISTORY).map((m) => ({
       role: m.role === 'user' ? ('user' as const) : ('assistant' as const),
       content: m.text,
     })),
@@ -118,7 +126,7 @@ export async function loadLocalModel(
     async chat(ctx, history, onToken) {
       const chunks = await engine.chat.completions.create({
         messages: toMessages(ctx, history),
-        max_tokens: 320,
+        max_tokens: 256,
         temperature: 0.7,
         stream: true,
       });

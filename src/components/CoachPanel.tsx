@@ -232,7 +232,8 @@ function ModelSettings({ engine, models }: { engine: CoachEngineApi; models: Coa
       <p className="text-xs leading-relaxed text-sys-muted">
         端末内でAIを動かすと、完全無料・回数無制限・オフラインで相談できます。記録は端末の外に出ません。
         モデルは初回のみダウンロードします(Wi-Fi 推奨)。負荷が高いため、起動ごとに自動では立ち上げず、
-        使うときにここで有効化します。
+        使うときにここで有効化します。スマホでは大きいモデルは推論中に落ちることがあります——
+        まずは一番軽い「Qwen2.5 0.5B」をお試しください。
       </p>
 
       {engine.status === 'cached' && (
