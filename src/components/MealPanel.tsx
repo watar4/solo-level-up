@@ -4,7 +4,14 @@ import { MealAiPanel } from './MealAiPanel';
 import { useMeals } from '../hooks/useMeals';
 import { useMealPresets } from '../hooks/useMealPresets';
 import { useWeights } from '../hooks/useWeights';
+import { useAiSettings } from '../hooks/useAiSettings';
 import { todayKey } from '../lib/leveling';
+import {
+  applyEstimateToForm,
+  estimateSourceLabel,
+  fileToInlineImage,
+  requestMealEstimate,
+} from '../lib/mealEstimate';
 import {
   computeNutritionTarget,
   daysUntil,
@@ -34,11 +41,14 @@ import type {
 import {
   Bookmark,
   BookmarkPlus,
+  Camera,
   Check,
   Flame,
+  Loader2,
   Pencil,
   Plus,
   SlidersHorizontal,
+  Sparkles,
   Target,
   Trash2,
   UtensilsCrossed,
@@ -193,6 +203,9 @@ export function MealPanel({
   const { meals, addMeal, editMeal, removeMeal } = useMeals(uid);
   const { presets, savePreset, removePreset } = useMealPresets(uid);
   const { entries } = useWeights(uid);
+  // Shared with MealAiPanel (same localStorage-backed key) — powers the
+  // photo / name → kcal+PFC auto-fill below.
+  const { apiKey, model, hasKey } = useAiSettings(uid);
 
   // ----- input form state -----
   const [slot, setSlot] = useState<MealSlot>('breakfast');
@@ -203,6 +216,11 @@ export function MealPanel({
   const [carbs, setCarbs] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // AI auto-fill state. `aiNote` explains where the numbers came from (label
+  // OCR / photo estimate / name estimate) so the user knows to sanity-check.
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiNote, setAiNote] = useState<string | null>(null);
 
   // When set, the form edits an existing entry instead of logging a new one.
   // editingDate preserves the original day (the form has no date picker).
@@ -315,6 +333,49 @@ export function MealPanel({
     setProtein('');
     setFat('');
     setCarbs('');
+    setAiNote(null);
+  };
+
+  // Ask Gemini to fill kcal/PFC from a photo (meal or nutrition label — the
+  // model tells them apart and OCRs labels) and/or the typed dish name. Only
+  // fills the form; the user reviews and taps 記録する as usual.
+  const runAiEstimate = async (file?: File) => {
+    if (aiBusy || busy) return;
+    if (!hasKey) {
+      setError('AI入力には Gemini API キーが必要です(上の「AI Coach」→ API 設定で登録)');
+      return;
+    }
+    setAiBusy(true);
+    setError(null);
+    setAiNote(null);
+    try {
+      const image = file ? await fileToInlineImage(file) : undefined;
+      const est = await requestMealEstimate({
+        apiKey,
+        model,
+        name: name.trim() || undefined,
+        image,
+      });
+      const fields = applyEstimateToForm(est, name);
+      setName(fields.name);
+      setKcal(String(fields.kcal));
+      setProtein(String(fields.protein));
+      setFat(String(fields.fat));
+      setCarbs(String(fields.carbs));
+      setAiNote(estimateSourceLabel(est));
+    } catch (err) {
+      console.error('[meal:estimate] failed', err);
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setAiBusy(false);
+    }
+  };
+
+  const onPickPhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    // Reset so picking the same file again re-fires onChange.
+    e.target.value = '';
+    if (file) void runAiEstimate(file);
   };
 
   const submit = async (e: React.FormEvent) => {
@@ -585,8 +646,52 @@ export function MealPanel({
             value={name}
             onChange={(e) => setName(e.target.value)}
             className="sys-input"
-            disabled={busy}
+            disabled={busy || aiBusy}
           />
+
+          {/* AI auto-fill: meal photo / nutrition-label OCR / name estimate */}
+          <div className="space-y-1.5">
+            <div className="flex gap-2">
+              <label
+                className={`inline-flex flex-1 items-center justify-center gap-1.5 border border-sys-border/40 py-2 text-xs transition ${
+                  aiBusy || busy || !hasKey
+                    ? 'cursor-not-allowed opacity-50'
+                    : 'cursor-pointer text-sys-muted hover:border-sys-accent hover:text-sys-accent'
+                }`}
+              >
+                <Camera className="h-3.5 w-3.5" />
+                写真でAI入力
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={onPickPhoto}
+                  disabled={aiBusy || busy || !hasKey}
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => void runAiEstimate()}
+                disabled={aiBusy || busy || !hasKey || !name.trim()}
+                className="inline-flex flex-1 items-center justify-center gap-1.5 border border-sys-border/40 py-2 text-xs text-sys-muted transition hover:border-sys-accent hover:text-sys-accent disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                名前でAI入力
+              </button>
+            </div>
+            {aiBusy && (
+              <p className="flex items-center gap-1.5 text-[11px] text-sys-accent">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                AIが解析中…(料理写真は推定、栄養成分表示は読み取り)
+              </p>
+            )}
+            {aiNote && !aiBusy && <p className="text-[11px] text-sys-ok">{aiNote}</p>}
+            {!hasKey && (
+              <p className="text-[10px] text-sys-muted/70">
+                ※ 上の「AI Coach」の API 設定で Gemini キー(無料枠)を登録すると、写真や名前から自動入力できます。
+              </p>
+            )}
+          </div>
 
           <div className="grid grid-cols-4 gap-2">
             <label className="text-[10px] uppercase tracking-widest text-sys-muted">
@@ -652,7 +757,7 @@ export function MealPanel({
 
           {error && <p className="text-[11px] text-sys-danger">{error}</p>}
 
-          <button type="submit" className="sys-button w-full justify-center" disabled={busy}>
+          <button type="submit" className="sys-button w-full justify-center" disabled={busy || aiBusy}>
             {editingId ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
             {busy ? '保存中…' : editingId ? '更新する' : '記録する'}
           </button>

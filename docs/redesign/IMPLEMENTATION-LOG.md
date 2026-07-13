@@ -338,3 +338,23 @@ P1(ロジック基盤)→P2(第1章プレイアブル)→P4(2〜12章量産)→P
 
 ### 見送り(将来)
 - C4:Chrome 内蔵 Prompt API エンジン / 週次ふりかえりレポート生成 /(任意)Gemini BYOK エンジン。narrate の LLM 言い換えを CoachCard に反映する導線(現状 card は rules 文、LLM は chat のみ)。
+
+---
+
+## v4 — 食事のAI自動入力(写真・栄養成分表示OCR・名前から)✅
+
+食事タブの Record フォームに、**Gemini 無料枠(既存 BYOK キーを共用)**で kcal/PFC を自動入力する機能を追加。ユーザー要望「写真+食事名でAIが自動入力。栄養成分表示の写真ならOCRで読み取り」に対応。
+
+- **新規 `src/lib/mealEstimate.ts`**:
+  - `requestMealEstimate`(マルチモーダル1回呼び出し。system prompt で「栄養成分表示ラベル→source='label'で正確にOCR(1食/1包装あたり優先、糖質+食物繊維の合算対応)/料理写真→source='photo'で1人前推定/画像なし→source='name'で名前から推定」を指示。`responseMimeType: 'application/json'`+低温度)。
+  - `parseMealEstimate`(純粋関数):コードフェンス・前後の文章に耐性、kcal 欠落時は PFC から導出(P・C×4/F×9)、負値→0・異常値クランプ、`{"error"}` 応答は日本語エラーに変換。
+  - `fileToInlineImage`:canvas で最大1280pxのJPEGに縮小してから送信(ラベルの判読性は維持しつつリクエストを軽量化)。
+  - `applyEstimateToForm` / `estimateSourceLabel`(純粋関数):ユーザーが入力済みのメニュー名は AI 名で上書きしない/出所ラベル(読み取り or 推定)を明示。
+- **`MealPanel.tsx`**:メニュー名入力の直下に「写真でAI入力」(file input, accept="image/*" — iOSはカメラ/ライブラリ選択)と「名前でAI入力」ボタン。結果は**フォームに流し込むだけ**で、ユーザーが確認・修正してから通常どおり「記録する」。キーは `useAiSettings` を共用し、未設定時はボタン無効+AI Coach の API 設定への案内。
+- **新規テスト `mealEstimate.test.ts` 11 件**(パース耐性・kcal導出・クランプ・出所ラベル・名前優先)。
+
+### 検証
+- `tsc -b`・`npm run build` 成功。**全103テスト green**(92+11)。実ブラウザで Record フォーム描画・ボタン無効状態・キー未設定案内を確認(pageerror 0)。実際の Gemini 呼び出し(画像推定・ラベルOCR)は BYOK キーが必要なため実機で要確認。
+
+### 注記
+- Gemini 無料枠には RPM/RPD の回数制限があるが、これは**ユーザーが明示的に選択した機能**(1日数回の食事記録なら無料枠で十分)。コーチ(v3・撤回済み)の「回数無制限」制約とは別件。
