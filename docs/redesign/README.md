@@ -25,6 +25,7 @@
 | [`07-implementation.md`](./07-implementation.md) | **実装者(Opus)向け**:型定義、新規ファイル構成、Firestore スキーマ、既存データ移行、5フェーズのロードマップ |
 | [`08-retention-reliability.md`](./08-retention-reliability.md) | **提案書 v2(v1 実装完了後の追補)**:継続率と信頼性の改修。リマインダー通知・三日坊主救済(ストリーク)・初回体験・Firestore オフライン永続化・書き込み競合・ライブ購読。R1〜R5 の実装ロードマップつき |
 | [`09-ai-coach.md`](./09-ai-coach.md) | **提案書 v3(⚠️ 撤回済み)**:AIコーチ。C1〜C3 を実装したが、主端末の iPhone(iOS Safari)ではローカルLLM推論でタブが落ち、無課金・回数無制限の制約下に iOS 代替が無いため機能ごと撤去。経緯は文書冒頭を参照 |
+| [`10-server-ai.md`](./10-server-ai.md) | **検討資料(未実装)**:ストア公開時のサーバーサイドAI移行。BYOK(キー貼り付け)をやめ、Firebase AI Logic + App Check + per-user クォータでキー不要のAI機能にする実装方法・乱用対策・コスト試算・App Store 審査の考慮事項。S1〜S4 の移行プランつき |
 
 ## 提案のコア思想(3行で)
 
