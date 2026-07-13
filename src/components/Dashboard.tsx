@@ -43,7 +43,6 @@ const MealPanel          = lazy(() => import('./MealPanel').then((m) => ({ defau
 const ShopPanel          = lazy(() => import('./ShopPanel').then((m) => ({ default: m.ShopPanel })));
 const DexPanel           = lazy(() => import('./DexPanel').then((m) => ({ default: m.DexPanel })));
 const SavingsPanel       = lazy(() => import('./SavingsPanel').then((m) => ({ default: m.SavingsPanel })));
-const CoachPanel         = lazy(() => import('./CoachPanel').then((m) => ({ default: m.CoachPanel })));
 import { TabBar, type DashboardTab } from './TabBar';
 import { PixelArt } from './PixelArt';
 import { motion } from 'framer-motion';
@@ -51,10 +50,6 @@ import type { LucideIcon } from 'lucide-react';
 import { useShadows } from '../hooks/useShadows';
 import { useItems } from '../hooks/useItems';
 import { useSavings } from '../hooks/useSavings';
-import { useCoachData } from '../hooks/useCoachData';
-import { useCoachEngine } from '../hooks/useCoachEngine';
-import { CoachCard } from './CoachCard';
-import { CoachBoundary } from './CoachBoundary';
 import { rollShadowDrop, RARITY_LABEL } from '../lib/shadows';
 import { weaponStatBonus } from '../lib/items';
 import { formatGold, walletGold } from '../lib/economy';
@@ -267,13 +262,6 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
   // Real-world savings ledger (yen) — powers the 貯金 tab.
   const savingsData = useSavings(user.uid);
 
-  // AI coach: a read-only context assembled from every log (savings reused from
-  // above to avoid a duplicate subscription) + a pluggable engine (rules by
-  // default, on-device LLM when opted in). Drives the CoachCard + CoachPanel.
-  const coachCtx = useCoachData(user.uid, character, game.quests, savingsData.entries);
-  const coachEngine = useCoachEngine(user.uid);
-  const [coachOpen, setCoachOpen] = useState(false);
-
   // Player effective stats = base + equipped weapon bonus + class growth.
   const effectiveStats = useMemo<Record<StatKey, number>>(() => {
     const out: Record<StatKey, number> = { ...character.stats };
@@ -447,11 +435,6 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
 
         {tab === 'quest' && (
         <div className="mx-auto max-w-xl space-y-6">
-          {coachCtx && (
-            <CoachBoundary>
-              <CoachCard ctx={coachCtx} onOpenChat={() => setCoachOpen(true)} />
-            </CoachBoundary>
-          )}
           <SystemWindow title="Quest Log" subtitle="daily missions">
             <div className="mb-3 flex items-center justify-between">
               <p className="text-xs uppercase tracking-widest text-sys-muted flex items-center gap-1.5">
@@ -786,20 +769,6 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
           </a>
         </footer>
       </div>
-
-      <Suspense fallback={null}>
-        {coachOpen && (
-          <CoachBoundary fallback={null}>
-            <CoachPanel
-              open={coachOpen}
-              uid={user.uid}
-              ctx={coachCtx}
-              engine={coachEngine}
-              onClose={() => setCoachOpen(false)}
-            />
-          </CoachBoundary>
-        )}
-      </Suspense>
 
       <Suspense fallback={null}>
         {questModal.open && (

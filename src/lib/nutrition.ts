@@ -1,10 +1,8 @@
 import type {
   ActivityLevel,
-  Character,
   DietType,
   MealEntry,
   NutritionTarget,
-  WeightEntry,
 } from '../types';
 
 // kcal per kg of bodyweight — a simplified daily-maintenance estimate that
@@ -66,39 +64,6 @@ export function computeNutritionTarget(input: NutritionGoalInputs): NutritionTar
   kcal = Math.min(maxKcal, Math.max(minKcal, kcal));
 
   return splitMacros(kcal, currentWeight, diet);
-}
-
-// The daily target a character is actually held to: the manual override if set,
-// otherwise the auto value back-calculated from the weight goal. Returns null
-// when neither is available (missing goal inputs). Mirrors MealPanel's
-// effectiveTarget so other surfaces (the AI coach) grade against the same number.
-export function resolveNutritionTarget(
-  character: Pick<
-    Character,
-    'nutritionTarget' | 'weightTarget' | 'weightTargetDate' | 'activityLevel' | 'dietType'
-  >,
-  weights: WeightEntry[]
-): NutritionTarget | null {
-  if (character.nutritionTarget) return character.nutritionTarget;
-  const currentWeight = weights.length
-    ? [...weights].sort((a, b) => a.date.localeCompare(b.date))[weights.length - 1].weight
-    : null;
-  if (
-    currentWeight == null ||
-    character.weightTarget == null ||
-    !character.weightTargetDate ||
-    !character.activityLevel ||
-    !character.dietType
-  ) {
-    return null;
-  }
-  return computeNutritionTarget({
-    currentWeight,
-    targetWeight: character.weightTarget,
-    daysRemaining: daysUntil(character.weightTargetDate),
-    activity: character.activityLevel,
-    diet: character.dietType,
-  });
 }
 
 // Distribute a calorie budget into protein/fat/carbs grams per the diet preset.

@@ -408,23 +408,19 @@ export function useGameData(user: User | null): GameData {
     const seen = new Date(character.lastSeenAt || 0);
     const lastSeenDay = `${seen.getFullYear()}-${String(seen.getMonth() + 1).padStart(2, '0')}-${String(seen.getDate()).padStart(2, '0')}`;
     if (lastSeenDay >= todayKey()) return; // already active today
-    // The always-on CoachCard now carries the day-to-day catch-up (remaining
-    // count, at-risk streaks). The toast is reserved for a real return-from-
-    // absence (3+ days away) so we don't double up with the card every morning.
-    const awayDays = Math.round(
-      (new Date(`${todayKey()}T00:00:00`).getTime() - new Date(`${lastSeenDay}T00:00:00`).getTime()) /
-        86_400_000
-    );
-    if (awayDays < 3) return;
     const remaining = quests.filter((q) => !q.archived && q.type === 'daily' && !isQuestDoneToday(q));
     if (remaining.length === 0) return;
+    const topStreak = remaining.reduce((m, q) => Math.max(m, q.streak), 0);
     enqueue([
       {
         id: `reminder:catchup:${Date.now()}`,
         kind: 'reminder',
         title: 'おかえりなさい',
-        primary: `${awayDays}日ぶりですね`,
-        secondary: '記録は消えていません。四日目から、いきましょう。',
+        primary: `今日の クエストが ${remaining.length}件`,
+        secondary:
+          topStreak >= 2
+            ? `連続 ${topStreak}日 が 途切れそう。今日、ひとつだけでも。`
+            : '今日、ひとつだけでも。',
         icon: '📋',
         accent: 'gold',
       },
