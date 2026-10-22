@@ -16,7 +16,7 @@ export function EndingScene({ stats, onClose }: Props) {
       role="dialog"
       aria-modal="true"
       aria-label="エンディング"
-      className="fixed inset-0 z-[65] overflow-y-auto bg-gradient-to-b from-[#0a1230] to-[#04070f] p-6"
+      className="fixed inset-0 z-65 overflow-y-auto bg-linear-to-b from-[#0a1230] to-[#04070f] p-6"
     >
       <div className="mx-auto max-w-md space-y-8 py-8 text-center">
         <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.8 }}>
@@ -55,7 +55,7 @@ export function EndingScene({ stats, onClose }: Props) {
               <motion.div
                 key={ch.id}
                 initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.6 + i * 0.06 }}
-                className="rounded-sm border border-sys-border/30 bg-black/20 px-3 py-1.5 text-[11px]"
+                className="rounded-xs border border-sys-border/30 bg-black/20 px-3 py-1.5 text-[11px]"
               >
                 <span className="font-bold text-sys-text/90">{lord.name}</span>
                 <span className="ml-1 text-sys-muted">{lord.loreAfter}</span>
@@ -80,7 +80,7 @@ export function EndingScene({ stats, onClose }: Props) {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-sm border border-sys-border/30 bg-black/20 px-2 py-1.5">
+    <div className="rounded-xs border border-sys-border/30 bg-black/20 px-2 py-1.5">
       <div className="text-[9px] uppercase tracking-wide text-sys-muted">{label}</div>
       <div className="font-mono text-sm font-bold text-sys-text">{value}</div>
     </div>

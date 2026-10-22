@@ -57,7 +57,7 @@ export function JobPanel({ character, onClose, onAdvance, onChangeCreed }: Props
     <div
       {...dialog}
       aria-label="ギルド ― 職業"
-      className="fixed inset-0 z-50 overflow-y-auto bg-[#04070f]/95 p-4 outline-none"
+      className="fixed inset-0 z-50 overflow-y-auto bg-[#04070f]/95 p-4 outline-hidden"
       style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 5rem)' }}
     >
       <div className="mx-auto max-w-md space-y-4">
@@ -159,5 +159,5 @@ function passiveText(kind: string, mods: ReturnType<typeof jobCombatMods>): stri
 }
 
 function Tag({ children }: { children: React.ReactNode }) {
-  return <span className="rounded-sm border border-sys-border/50 px-1.5 py-0.5 text-sys-muted">{children}</span>;
+  return <span className="rounded-xs border border-sys-border/50 px-1.5 py-0.5 text-sys-muted">{children}</span>;
 }

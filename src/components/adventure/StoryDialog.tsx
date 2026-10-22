@@ -44,7 +44,7 @@ export function StoryDialog({ lines, onDone }: Props) {
     // Outer layer is the dialog; the tap-to-advance control is a real button
     // inside it (role="dialog" on the button itself would erase its button
     // semantics for assistive tech).
-    <div role="dialog" aria-modal="true" aria-label="かいわ" className="fixed inset-0 z-[60]">
+    <div role="dialog" aria-modal="true" aria-label="かいわ" className="fixed inset-0 z-60">
       <button
         type="button"
         onClick={advance}

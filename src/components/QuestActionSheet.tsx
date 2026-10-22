@@ -62,7 +62,7 @@ export function QuestActionSheet({
           transition={{ duration: 0.15 }}
           onClick={onClose}
         >
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-xs" />
 
           <motion.div
             className="relative z-10 w-full sm:max-w-sm"

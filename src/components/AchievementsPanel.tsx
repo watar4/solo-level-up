@@ -40,7 +40,7 @@ export function AchievementsPanel({ open, character, onClose }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-xs overflow-y-auto"
       onClick={onClose}
     >
       <div className="w-full max-w-3xl my-auto" onClick={(e) => e.stopPropagation()}>

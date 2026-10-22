@@ -371,7 +371,7 @@ export function AdventurePanel(props: Props) {
   return (
     <div
       {...shellDialog}
-      className="fixed inset-0 z-50 overflow-y-auto bg-[#04070f]/95 p-4 outline-none"
+      className="fixed inset-0 z-50 overflow-y-auto bg-[#04070f]/95 p-4 outline-hidden"
       style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 5rem)' }}
       aria-label="冒険"
     >
@@ -385,7 +385,7 @@ export function AdventurePanel(props: Props) {
             <h2 className="sys-title text-base">{title}</h2>
           </div>
           <div className="flex items-center gap-2">
-            <span className="flex items-center gap-1 rounded-sm border border-sys-border/40 px-1.5 py-0.5 text-xs text-sys-text" title="戦意:クエスト達成でたまる 出撃コスト">
+            <span className="flex items-center gap-1 rounded-xs border border-sys-border/40 px-1.5 py-0.5 text-xs text-sys-text" title="戦意:クエスト達成でたまる 出撃コスト">
               <span className="text-[10px] text-sys-muted">戦意</span> {campaign.will.stock}/3
             </span>
             <button type="button" onClick={props.onClose} className="-m-2 p-2 text-sys-muted hover:text-sys-text" aria-label="とじる">

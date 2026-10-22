@@ -26,7 +26,7 @@ interface Props {
 export function TabBar({ active, onChange }: Props) {
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-sys-border/50 bg-[#04070f]/95 backdrop-blur-sm"
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-sys-border/50 bg-[#04070f]/95 backdrop-blur-xs"
       style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 0.4rem)' }}
     >
       <div className="mx-auto flex max-w-5xl">

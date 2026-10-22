@@ -52,7 +52,7 @@ export function ClosetPanel({ character, onClose, onSave }: Props) {
     <div
       {...dialog}
       aria-label="クローゼット"
-      className="fixed inset-0 z-50 overflow-y-auto bg-[#04070f]/95 p-4 outline-none"
+      className="fixed inset-0 z-50 overflow-y-auto bg-[#04070f]/95 p-4 outline-hidden"
       style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 5rem)' }}
     >
       <div className="mx-auto max-w-md">
@@ -92,7 +92,7 @@ export function ClosetPanel({ character, onClose, onSave }: Props) {
                     disabled={!unlocked}
                     aria-pressed={active}
                     onClick={() => patch({ outfit: o.id, primaryColor: o.primary, accentColor: o.accent })}
-                    className={`rounded-sm border px-2 py-1.5 text-left text-xs transition ${
+                    className={`rounded-xs border px-2 py-1.5 text-left text-xs transition ${
                       active ? 'border-sys-accent bg-sys-accent/10 text-sys-text'
                         : unlocked ? 'border-sys-border/40 text-sys-muted' : 'border-sys-border/20'
                     }`}
@@ -132,7 +132,7 @@ function Swatches({ label, colors, value, onPick }: { label: string; colors: str
         {colors.map((c) => (
           <button key={c} type="button" onClick={() => onPick(c)}
             aria-label={`${label} ${c}`} aria-pressed={value === c}
-            className={`h-9 w-9 rounded-sm border-2 transition ${value === c ? 'border-sys-accent scale-110' : 'border-transparent'}`}
+            className={`h-9 w-9 rounded-xs border-2 transition ${value === c ? 'border-sys-accent scale-110' : 'border-transparent'}`}
             style={{ backgroundColor: c }} />
         ))}
       </div>
@@ -147,7 +147,7 @@ function Chips({ label, options, value, onPick }: { label: string; options: { id
       <div className="flex flex-wrap gap-1.5">
         {options.map((o) => (
           <button key={o.id} type="button" onClick={() => onPick(o.id)} aria-pressed={value === o.id}
-            className={`rounded-sm border px-2.5 py-1.5 text-xs transition ${value === o.id ? 'border-sys-accent bg-sys-accent/10 text-sys-text' : 'border-sys-border/40 text-sys-muted'}`}>
+            className={`rounded-xs border px-2.5 py-1.5 text-xs transition ${value === o.id ? 'border-sys-accent bg-sys-accent/10 text-sys-text' : 'border-sys-border/40 text-sys-muted'}`}>
             {o.label}
           </button>
         ))}

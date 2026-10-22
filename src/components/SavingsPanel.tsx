@@ -398,7 +398,7 @@ export function SavingsPanel({
             </div>
             <div className="sys-bar h-3">
               <div
-                className="sys-bar-fill bg-gradient-to-r from-amber-500 to-yellow-300"
+                className="sys-bar-fill bg-linear-to-r from-amber-500 to-yellow-300"
                 style={{ width: `${goalPct}%` }}
               >
                 <span className="sys-bar-shine" />
@@ -414,7 +414,7 @@ export function SavingsPanel({
                 </div>
                 <div className="sys-bar mt-1 h-2">
                   <div
-                    className="sys-bar-fill bg-gradient-to-r from-sys-accent to-cyan-300"
+                    className="sys-bar-fill bg-linear-to-r from-sys-accent to-cyan-300"
                     style={{ width: `${monthlyPct}%` }}
                   >
                     <span className="sys-bar-shine" />
@@ -464,14 +464,14 @@ export function SavingsPanel({
                   <p className="text-[11px] text-sys-danger sm:col-span-3">{goalError}</p>
                 )}
                 <div className="flex gap-2 sm:col-span-3">
-                  <button type="button" onClick={() => void handleSaveGoal()} className="sys-button sys-button-gold flex-1 justify-center !py-1.5 !text-xs">
+                  <button type="button" onClick={() => void handleSaveGoal()} className="sys-button sys-button-gold flex-1 justify-center py-1.5! text-xs!">
                     目標を設定
                   </button>
                   {goal && (
                     <button
                       type="button"
                       onClick={() => setGoalEditing(false)}
-                      className="sys-button flex-1 justify-center !py-1.5 !text-xs"
+                      className="sys-button flex-1 justify-center py-1.5! text-xs!"
                     >
                       キャンセル
                     </button>
@@ -609,7 +609,7 @@ export function SavingsPanel({
                   type="button"
                   onClick={() => void handleImport()}
                   disabled={importBusy}
-                  className="sys-button sys-button-gold flex-1 justify-center !py-1.5 !text-xs"
+                  className="sys-button sys-button-gold flex-1 justify-center py-1.5! text-xs!"
                 >
                   {importBusy ? '取り込み中…' : 'この内容で取り込む'}
                 </button>
@@ -619,7 +619,7 @@ export function SavingsPanel({
                     setPreview(null);
                     if (fileInputRef.current) fileInputRef.current.value = '';
                   }}
-                  className="sys-button flex-1 justify-center !py-1.5 !text-xs"
+                  className="sys-button flex-1 justify-center py-1.5! text-xs!"
                 >
                   キャンセル
                 </button>
@@ -665,10 +665,10 @@ export function SavingsPanel({
                 <div
                   className={`sys-bar-fill ${
                     overBudget
-                      ? 'bg-gradient-to-r from-rose-600 to-rose-400'
+                      ? 'bg-linear-to-r from-rose-600 to-rose-400'
                       : budgetPct !== null && budgetPct > 80
-                      ? 'bg-gradient-to-r from-amber-600 to-amber-400'
-                      : 'bg-gradient-to-r from-sys-accent to-cyan-300'
+                      ? 'bg-linear-to-r from-amber-600 to-amber-400'
+                      : 'bg-linear-to-r from-sys-accent to-cyan-300'
                   }`}
                   style={{ width: `${budgetPct ?? 0}%` }}
                 >
@@ -690,14 +690,14 @@ export function SavingsPanel({
                   value={budgetAmount}
                   onChange={(e) => setBudgetAmount(e.target.value)}
                 />
-                <button type="button" onClick={() => void handleSaveBudget()} className="sys-button !py-1.5 !text-xs">
+                <button type="button" onClick={() => void handleSaveBudget()} className="sys-button py-1.5! text-xs!">
                   設定
                 </button>
                 {budgetEditing && (
                   <button
                     type="button"
                     onClick={() => setBudgetEditing(false)}
-                    className="sys-button !py-1.5 !text-xs"
+                    className="sys-button py-1.5! text-xs!"
                   >
                     戻る
                   </button>
@@ -730,12 +730,12 @@ export function SavingsPanel({
               <div className="flex w-full flex-1 items-end justify-center gap-0.5">
                 <div
                   title={`貯金 ${formatYen(m.saved)}`}
-                  className="w-2/5 bg-gradient-to-t from-amber-600 to-yellow-300"
+                  className="w-2/5 bg-linear-to-t from-amber-600 to-yellow-300"
                   style={{ height: `${Math.max(m.saved > 0 ? 4 : 0, (Math.max(0, m.saved) / historyMax) * 100)}%` }}
                 />
                 <div
                   title={`カード利用 ${formatYen(m.spent)}`}
-                  className="w-2/5 bg-gradient-to-t from-sky-700 to-sys-accent"
+                  className="w-2/5 bg-linear-to-t from-sky-700 to-sys-accent"
                   style={{ height: `${Math.max(m.spent > 0 ? 4 : 0, (m.spent / historyMax) * 100)}%` }}
                 />
               </div>

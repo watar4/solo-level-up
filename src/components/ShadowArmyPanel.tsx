@@ -98,7 +98,7 @@ export function ShadowArmyPanel({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-xs overflow-y-auto"
       onClick={onClose}
     >
       <div className="w-full max-w-2xl my-auto" onClick={(e) => e.stopPropagation()}>
@@ -190,7 +190,7 @@ function ShadowExpBar({ shadow }: { shadow: Shadow }) {
     <div className="mt-1">
       <div className="h-1 w-full overflow-hidden border border-sys-border/30 bg-black/60">
         <div
-          className="h-full bg-gradient-to-r from-purple-500 to-fuchsia-300"
+          className="h-full bg-linear-to-r from-purple-500 to-fuchsia-300"
           style={{ width: `${pct}%` }}
         />
       </div>

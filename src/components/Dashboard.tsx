@@ -203,7 +203,7 @@ function HudBar({
             </span>
             <div className="sys-bar h-1.5 flex-1">
               <div
-                className="sys-bar-fill bg-gradient-to-r from-sys-accent to-cyan-300"
+                className="sys-bar-fill bg-linear-to-r from-sys-accent to-cyan-300"
                 style={{ width: `${expPct}%` }}
               >
                 <span className="sys-bar-shine" />
@@ -414,11 +414,11 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
           straight to the content. */}
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[60] focus:rounded-none focus:border focus:border-sys-gold focus:bg-sys-bg focus:px-4 focus:py-2 focus:text-sm focus:font-bold focus:text-sys-gold"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-60 focus:rounded-none focus:border focus:border-sys-gold focus:bg-sys-bg focus:px-4 focus:py-2 focus:text-sm focus:font-bold focus:text-sys-gold"
       >
         メインへスキップ
       </a>
-      <div id="main-content" tabIndex={-1} className="mx-auto max-w-5xl outline-none">
+      <div id="main-content" tabIndex={-1} className="mx-auto max-w-5xl outline-hidden">
         {/* ── Player HUD — always visible, glanceable, game-console style ── */}
         <header className="mb-5">
           <p className="sys-title mb-1.5 text-center sm:text-left">Solo Level Up System</p>
@@ -471,7 +471,7 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
                   <div
                     ref={listRef}
                     onScroll={updateScrollState}
-                    className="space-y-2 max-h-[28rem] overflow-y-auto pr-1.5 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-sys-border/40"
+                    className="space-y-2 max-h-112 overflow-y-auto pr-1.5 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-sys-border/40"
                   >
                     {active.map((q, fullIdx) => (
                       <SortableQuestCard
@@ -559,7 +559,7 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
               </p>
               <div className="h-2 w-full overflow-hidden border border-sys-border/30 bg-black/40">
                 <div
-                  className="h-full bg-gradient-to-r from-sys-ok to-sys-accent transition-all duration-500"
+                  className="h-full bg-linear-to-r from-sys-ok to-sys-accent transition-all duration-500"
                   style={{
                     width:
                       active.length > 0
@@ -628,7 +628,7 @@ export function Dashboard({ user, character, game, onSignOut }: Props) {
             <button
               type="button"
               onClick={() => setAdventureOpen(true)}
-              className="flex w-full items-center gap-4 rounded-lg border-2 border-sys-accent bg-gradient-to-r from-sys-accent/15 to-transparent p-4 text-left transition active:scale-[0.99]"
+              className="flex w-full items-center gap-4 rounded-lg border-2 border-sys-accent bg-linear-to-r from-sys-accent/15 to-transparent p-4 text-left transition active:scale-[0.99]"
             >
               <Compass className="h-8 w-8 shrink-0 text-sys-accent" />
               <span className="min-w-0 flex-1">
