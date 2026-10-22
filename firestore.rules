@@ -120,7 +120,10 @@ service cloud.firestore {
     match /gates/{secret} {
       allow get:           if true;
       allow list:          if false;
-      allow create, update: if request.auth != null && request.resource.data.uid == request.auth.uid;
+      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
+      allow update: if request.auth != null
+                    && resource.data.uid == request.auth.uid
+                    && request.resource.data.uid == request.auth.uid;
       allow delete:        if request.auth != null && resource.data.uid == request.auth.uid;
     }
 

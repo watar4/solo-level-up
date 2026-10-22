@@ -1,0 +1,11 @@
+# 2026-10-22 セキュリティ更新
+
+- `gates` のcreate/updateルールを分離し、更新前後の両方のUIDを所有者と照合します。既存の未認証getはショートカット向けに維持します。
+- Vite 7.3.7、React plugin 5.2.0、Vitest 4.1.12へ更新。grpc-jsを1.14.6以上に固定し、互換範囲内の推移依存も更新しました。
+- CIはNode.js 24.22.1、公式Actionsの完全なSHA参照、deployジョブ限定の書き込み/OIDC権限、checkout資格情報の非永続化へ変更。ビルド前に本番依存のHigh以上の監査と既存テストを実行します。
+
+検証: 本番ビルド、既存103テスト、Firebase実エミュレーターでの認可回帰5テストを通過。再実行方法は `security-tests/README.md` を参照してください。
+
+アプリ本体のnpm本番依存監査は0件。全依存監査にはTailwind 3由来の7パッケージ（High 5 / Moderate 2）の警告が残ります。bracesの現行3.xには修正版がなく、Tailwind 4への移行はCSS互換性の検証を伴うため含めていません。テスト専用の `security-tests` は別の依存ツリーです。
+
+**GitHub PagesのデプロイはFirestoreルールを配備しません。** 実際に利用するFirebaseプロジェクトを確認し、別途このルールを配備してください。`firebase.test.json` は本番プロジェクトを指定していません。
