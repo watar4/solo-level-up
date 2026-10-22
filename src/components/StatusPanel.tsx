@@ -107,7 +107,7 @@ export function StatusPanel({
               pixelSize={4}
               ariaLabel={character.name}
             />
-            <span className="absolute bottom-0.5 right-0.5 opacity-0 group-hover:opacity-100 bg-black/70 p-0.5 rounded transition">
+            <span className="absolute bottom-0.5 right-0.5 opacity-0 group-hover:opacity-100 bg-black/70 p-0.5 rounded-sm transition">
               <Palette className="h-3 w-3 text-sys-accent" />
             </span>
           </button>
@@ -158,14 +158,14 @@ export function StatusPanel({
               {character.level}
             </span>
             {character.statPoints > 0 && (
-              <span className="ml-auto rounded border border-sys-gold/60 bg-sys-gold/10 px-2 py-0.5 text-[11px] font-bold tracking-wider text-sys-gold">
+              <span className="ml-auto rounded-sm border border-sys-gold/60 bg-sys-gold/10 px-2 py-0.5 text-[11px] font-bold tracking-wider text-sys-gold">
                 +{character.statPoints} POINTS
               </span>
             )}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-sys-muted">
-            <span className="rounded-sm border border-sys-border/50 px-1.5 py-0.5 text-sys-text/80">{jobNode.name}</span>
-            {creed && <span className="rounded-sm border border-sys-border/50 px-1.5 py-0.5">信条:{creed.jp}</span>}
+            <span className="rounded-xs border border-sys-border/50 px-1.5 py-0.5 text-sys-text/80">{jobNode.name}</span>
+            {creed && <span className="rounded-xs border border-sys-border/50 px-1.5 py-0.5">信条:{creed.jp}</span>}
             <span>{classInfo.passiveDesc}</span>
           </div>
           </div>
@@ -180,7 +180,7 @@ export function StatusPanel({
           </div>
           <div className="h-2.5 w-full overflow-hidden border border-sys-border/40 bg-black/50">
             <div
-              className="h-full bg-gradient-to-r from-sys-accent to-sys-gold transition-all duration-500"
+              className="h-full bg-linear-to-r from-sys-accent to-sys-gold transition-all duration-500"
               style={{
                 width: `${pct}%`,
                 boxShadow: '0 0 12px rgba(0, 212, 255, 0.7)',

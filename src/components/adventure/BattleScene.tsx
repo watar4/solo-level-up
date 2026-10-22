@@ -233,14 +233,14 @@ export function BattleScene(props: Props) {
       role="dialog"
       aria-modal="true"
       aria-label={`${enemy.name} とのたたかい`}
-      className="fixed inset-0 z-[60] flex flex-col overflow-y-auto bg-gradient-to-b from-[#101a33] to-[#04070f]"
+      className="fixed inset-0 z-60 flex flex-col overflow-y-auto bg-linear-to-b from-[#101a33] to-[#04070f]"
     >
       {/* crit screen flash — suppressed for prefers-reduced-motion
           (full-screen white flashes are a photosensitivity risk) */}
       <AnimatePresence>
         {critFlash && !reducedMotion && (
           <motion.div key="crit" initial={{ opacity: 0.5 }} animate={{ opacity: 0 }} exit={{ opacity: 0 }}
-            transition={{ duration: 0.17 }} className="pointer-events-none absolute inset-0 z-[70] bg-white" />
+            transition={{ duration: 0.17 }} className="pointer-events-none absolute inset-0 z-70 bg-white" />
         )}
       </AnimatePresence>
 
@@ -249,16 +249,16 @@ export function BattleScene(props: Props) {
         {cutin && (
           <motion.div key="cutin" initial={{ x: '-110%' }} animate={{ x: '0%' }} exit={{ opacity: 0 }}
             transition={{ type: 'spring', stiffness: 200, damping: 22 }}
-            className="pointer-events-none absolute inset-x-0 top-1/3 z-[71] flex items-center gap-2 border-y-2 border-sys-accent bg-[#0a0f1c]/90 px-4 py-3">
+            className="pointer-events-none absolute inset-x-0 top-1/3 z-71 flex items-center gap-2 border-y-2 border-sys-accent bg-[#0a0f1c]/90 px-4 py-3">
             <span className="text-2xl">✦</span>
-            <span className="text-lg font-black text-sys-accent drop-shadow">{cutin}</span>
+            <span className="text-lg font-black text-sys-accent drop-shadow-sm">{cutin}</span>
           </motion.div>
         )}
       </AnimatePresence>
 
       {/* UI-sleep (ch12) drifting zzz */}
       {uiAsleep && (
-        <div className="pointer-events-none absolute inset-0 z-[68] bg-[#04070f]/30">
+        <div className="pointer-events-none absolute inset-0 z-68 bg-[#04070f]/30">
           {['z', 'z', 'z'].map((z, i) => (
             <motion.span key={i} initial={{ opacity: 0, y: 0 }} animate={{ opacity: [0, 1, 0], y: -40 }}
               transition={{ duration: 2.2, delay: i * 0.3, repeat: Infinity }}
@@ -282,7 +282,7 @@ export function BattleScene(props: Props) {
               else pendingWasteRef.current = true;
               setFakeNotif(false);
             }}
-            className="absolute inset-x-3 top-3 z-[72] flex items-center gap-3 rounded-xl border border-white/20 bg-[#1c1c22]/95 p-3 text-left shadow-lg"
+            className="absolute inset-x-3 top-3 z-72 flex items-center gap-3 rounded-xl border border-white/20 bg-[#1c1c22]/95 p-3 text-left shadow-lg"
           >
             <span className="text-xl">🔔</span>
             <span className="min-w-0">
@@ -340,9 +340,9 @@ export function BattleScene(props: Props) {
               </span>
             </span>
           </div>
-          <div className="mt-1 h-2.5 overflow-hidden rounded-sm border border-sys-border/60 bg-black/40">
+          <div className="mt-1 h-2.5 overflow-hidden rounded-xs border border-sys-border/60 bg-black/40">
             <motion.div
-              className="h-full bg-gradient-to-r from-rose-500 to-red-400"
+              className="h-full bg-linear-to-r from-rose-500 to-red-400"
               animate={{ width: `${enemyHpPct}%` }}
               transition={{ duration: 0.3 }}
             />
@@ -353,7 +353,7 @@ export function BattleScene(props: Props) {
               {Array.from({ length: s.enemy.break.max }).map((_, i) => (
                 <span
                   key={i}
-                  className={`h-1.5 w-3 rounded-sm ${
+                  className={`h-1.5 w-3 rounded-xs ${
                     i < s.enemy.break.current ? 'bg-amber-400' : 'bg-sys-border/40'
                   }`}
                 />
@@ -367,7 +367,7 @@ export function BattleScene(props: Props) {
 
       {/* Battle log */}
       <div className="mx-auto min-h-[3.2rem] w-full max-w-sm px-4">
-        <div aria-live="polite" className="rounded-sm border border-sys-border/40 bg-black/40 px-3 py-1.5">
+        <div aria-live="polite" className="rounded-xs border border-sys-border/40 bg-black/40 px-3 py-1.5">
           {log.slice(-2).map((line, i) => (
             <p key={`${line}-${i}`} className="text-[11px] leading-snug text-sys-text">
               {line}
@@ -379,7 +379,7 @@ export function BattleScene(props: Props) {
 
       {/* Party strip */}
       <div className="mx-auto w-full max-w-sm px-4 py-2">
-        <div className="relative flex items-center gap-2 rounded-sm border border-sys-border/50 bg-black/30 p-2">
+        <div className="relative flex items-center gap-2 rounded-xs border border-sys-border/50 bg-black/30 p-2">
           <div className="shrink-0">
             <PixelArt layers={[playerSprite]} pixelSize={4} ariaLabel={s.player.name} />
           </div>
@@ -391,18 +391,18 @@ export function BattleScene(props: Props) {
             <Bar pct={playerHpPct} className="from-emerald-500 to-green-400" />
             <div className="mt-1 flex items-center gap-1">
               <span className="w-7 text-[10px] text-sys-muted">奥義</span>
-              <div className="h-1.5 flex-1 overflow-hidden rounded-sm bg-black/40">
+              <div className="h-1.5 flex-1 overflow-hidden rounded-xs bg-black/40">
                 <div
-                  className="h-full bg-gradient-to-r from-cyan-500 to-sky-300"
+                  className="h-full bg-linear-to-r from-cyan-500 to-sky-300"
                   style={{ width: `${(s.ultimate / ULTIMATE_READY) * 100}%` }}
                 />
               </div>
             </div>
             <div className="mt-0.5 flex items-center gap-1">
               <span className="w-7 text-[10px] text-sys-muted">行動</span>
-              <div className="h-1.5 flex-1 overflow-hidden rounded-sm bg-black/40">
+              <div className="h-1.5 flex-1 overflow-hidden rounded-xs bg-black/40">
                 <div
-                  className="h-full bg-gradient-to-r from-amber-500 to-yellow-300"
+                  className="h-full bg-linear-to-r from-amber-500 to-yellow-300"
                   style={{ width: `${Math.min(100, (s.player.atb / ATB_TARGET) * 100)}%` }}
                 />
               </div>
@@ -415,7 +415,7 @@ export function BattleScene(props: Props) {
           <div className="mt-1 space-y-1">
             <div className="flex flex-wrap gap-1">
               {s.shadows.map((sh) => (
-                <span key={sh.key} className="rounded-sm border border-sys-border/40 bg-black/20 px-1.5 py-0.5 text-[9px] text-sys-muted">
+                <span key={sh.key} className="rounded-xs border border-sys-border/40 bg-black/20 px-1.5 py-0.5 text-[9px] text-sys-muted">
                   🩶 {sh.name} <span className="text-sys-accent/70">{SHADOW_ROLE_LABEL[sh.role]}</span>
                 </span>
               ))}
@@ -501,8 +501,8 @@ export function BattleScene(props: Props) {
 
 function Bar({ pct, className }: { pct: number; className: string }) {
   return (
-    <div className="h-2 overflow-hidden rounded-sm border border-sys-border/50 bg-black/40">
-      <motion.div className={`h-full bg-gradient-to-r ${className}`} animate={{ width: `${pct}%` }} transition={{ duration: 0.3 }} />
+    <div className="h-2 overflow-hidden rounded-xs border border-sys-border/50 bg-black/40">
+      <motion.div className={`h-full bg-linear-to-r ${className}`} animate={{ width: `${pct}%` }} transition={{ duration: 0.3 }} />
     </div>
   );
 }
@@ -524,7 +524,7 @@ function Cmd({ label, onClick, disabled, highlight }: { label: string; onClick: 
 function ElementBadge({ element }: { element: keyof typeof ELEMENT_LABELS }) {
   return (
     <span
-      className="rounded-sm px-1 text-[10px] font-bold text-black"
+      className="rounded-xs px-1 text-[10px] font-bold text-black"
       style={{ backgroundColor: ELEMENT_COLORS[element] }}
     >
       {ELEMENT_LABELS[element].kanji}
@@ -540,7 +540,7 @@ function StatusChips({ statuses }: { statuses: StatusId[] }) {
       {statuses.filter((s) => (seen.has(s) ? false : (seen.add(s), true))).map((s) => (
         <span
           key={s}
-          className="rounded-sm bg-black/30 px-1 text-[10px] text-sys-text"
+          className="rounded-xs bg-black/30 px-1 text-[10px] text-sys-text"
           title={STATUS_DEFS[s].jp}
           aria-label={STATUS_DEFS[s].jp}
         >
@@ -566,7 +566,7 @@ function PopupLayer({ popups }: { popups: Popup[] }) {
             animate={{ opacity: 1, y: -28, scale: p.tone === 'crit' ? 1.4 : 1.1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.6 }}
-            className={`absolute text-lg font-black drop-shadow ${color[p.tone]}`}
+            className={`absolute text-lg font-black drop-shadow-sm ${color[p.tone]}`}
           >
             {p.text}
           </motion.span>

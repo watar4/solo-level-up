@@ -17,7 +17,7 @@ export function MedalCase({ owned }: { owned: MedalId[] }) {
             <div
               key={m.id}
               title={has ? `${m.jp}：${m.desc}` : `第${m.chapter}章で獲得`}
-              className={`flex flex-col items-center gap-0.5 rounded-sm border p-1.5 text-center ${
+              className={`flex flex-col items-center gap-0.5 rounded-xs border p-1.5 text-center ${
                 has ? 'border-amber-500/50 bg-amber-500/5' : 'border-sys-border/30'
               }`}
             >

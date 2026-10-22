@@ -705,7 +705,7 @@ export function DailyBossPanel({
             }));
           if (lines.length) setLog((prev) => [...prev, ...lines]);
         })
-        .catch((err) => console.error('[boss] shadow growth failed', err));
+        .catch((err) => console.error('[boss] shadow-sm growth failed', err));
 
       onEnqueueBossEvent({
         bossName: boss.name,
@@ -838,7 +838,7 @@ export function DailyBossPanel({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-xs overflow-y-auto"
       onClick={onClose}
     >
       <div className="w-full max-w-2xl my-auto" onClick={(e) => e.stopPropagation()}>
@@ -1127,7 +1127,7 @@ export function DailyBossPanel({
                           </div>
                           <div className="mt-1 h-1 w-full overflow-hidden border border-sys-border/30 bg-black/60">
                             <div
-                              className="h-full transition-[width] duration-75 bg-gradient-to-r from-purple-400 to-pink-400"
+                              className="h-full transition-[width] duration-75 bg-linear-to-r from-purple-400 to-pink-400"
                               style={{ width: `${pct}%` }}
                             />
                           </div>
@@ -1537,8 +1537,8 @@ function HpBar({ icon, value, max, pct, color }: HpBarProps) {
         <div
           className={`h-full transition-all duration-300 ${
             color === 'ok'
-              ? 'bg-gradient-to-r from-sys-ok to-emerald-300'
-              : 'bg-gradient-to-r from-sys-danger to-amber-400'
+              ? 'bg-linear-to-r from-sys-ok to-emerald-300'
+              : 'bg-linear-to-r from-sys-danger to-amber-400'
           }`}
           style={{ width: `${pct}%` }}
         />
@@ -1569,8 +1569,8 @@ function AtbBar({ pct, side }: AtbBarProps) {
         <div
           className={`h-full transition-[width] duration-75 ${
             side === 'player'
-              ? 'bg-gradient-to-r from-sys-accent to-cyan-300'
-              : 'bg-gradient-to-r from-rose-500 to-amber-400'
+              ? 'bg-linear-to-r from-sys-accent to-cyan-300'
+              : 'bg-linear-to-r from-rose-500 to-amber-400'
           }`}
           style={{ width: `${Math.min(100, pct)}%` }}
         />

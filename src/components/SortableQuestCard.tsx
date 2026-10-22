@@ -37,7 +37,7 @@ export function SortableQuestCard({ forceLifted, ...props }: Props) {
     transform: combined,
     transformOrigin: 'center',
     transition: lifted
-      ? 'transform 160ms cubic-bezier(0.2, 1.5, 0.3, 1), box-shadow 90ms ease-out, outline 90ms ease-out, filter 90ms ease-out'
+      ? 'transform 160ms cubic-bezier(0.2, 1.5, 0.3, 1), box-shadow 90ms ease-out, outline-solid 90ms ease-out, filter 90ms ease-out'
       : transition ?? 'transform 140ms ease-out, box-shadow 140ms ease-out, filter 140ms ease-out',
     zIndex: lifted ? 30 : undefined,
     position: 'relative',

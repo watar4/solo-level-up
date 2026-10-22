@@ -184,7 +184,7 @@ export function StatsDashboard({ open, uid, character, quests, onClose }: Props)
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-xs overflow-y-auto"
       onClick={onClose}
     >
       <div className="w-full max-w-3xl my-auto" onClick={(e) => e.stopPropagation()}>
@@ -258,7 +258,7 @@ export function StatsDashboard({ open, uid, character, quests, onClose }: Props)
                           {b.count > 0 ? b.count : ''}
                         </span>
                         <div
-                          className="w-full bg-gradient-to-t from-sys-accent/40 to-sys-accent border-t border-sys-accent/80"
+                          className="w-full bg-linear-to-t from-sys-accent/40 to-sys-accent border-t border-sys-accent/80"
                           style={{ height: `${Math.max(pct, b.count > 0 ? 6 : 0)}%` }}
                         />
                       </div>

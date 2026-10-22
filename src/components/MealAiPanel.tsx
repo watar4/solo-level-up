@@ -167,7 +167,7 @@ export function MealAiPanel({ uid, meals, today, target }: Props) {
               <span className="text-sys-accent">{RANGE_LABEL[result.range]}の評価</span>
               <span className="font-mono">{fmtTime(result.at)}</span>
             </div>
-            <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-sys-text/90">
+            <p className="whitespace-pre-wrap wrap-break-word text-sm leading-relaxed text-sys-text/90">
               {result.text}
             </p>
           </div>

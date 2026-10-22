@@ -92,7 +92,7 @@ export function FocusGatePanel({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/70 px-4 py-6 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/70 px-4 py-6 backdrop-blur-xs"
       onClick={onClose}
     >
       <div className="my-auto w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>

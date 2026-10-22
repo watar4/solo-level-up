@@ -70,7 +70,7 @@ export function CharacterCreation({ onCreate }: Props) {
                 disabled={i >= step}
                 onClick={() => i < step && setStep(i)}
                 aria-current={i === step ? 'step' : undefined}
-                className={`flex-1 whitespace-nowrap rounded-sm py-1.5 text-center text-[9px] font-bold tracking-wide ${
+                className={`flex-1 whitespace-nowrap rounded-xs py-1.5 text-center text-[9px] font-bold tracking-wide ${
                   i === step ? 'bg-sys-accent/20 text-sys-accent' : i < step ? 'text-sys-muted underline-offset-2 hover:underline' : 'text-sys-muted/50'
                 }`}
               >
@@ -206,7 +206,7 @@ export function CharacterCreation({ onCreate }: Props) {
 }
 
 function Tag({ children }: { children: React.ReactNode }) {
-  return <span className="rounded-sm border border-sys-border/50 px-1.5 py-0.5 text-sys-muted">{children}</span>;
+  return <span className="rounded-xs border border-sys-border/50 px-1.5 py-0.5 text-sys-muted">{children}</span>;
 }
 
 function Swatches({ label, colors, value, onPick }: { label: string; colors: string[]; value?: string; onPick: (v: string) => void }) {
@@ -221,7 +221,7 @@ function Swatches({ label, colors, value, onPick }: { label: string; colors: str
             onClick={() => onPick(c)}
             aria-label={`${label} ${c}`}
             aria-pressed={value === c}
-            className={`h-9 w-9 rounded-sm border-2 transition ${value === c ? 'border-sys-accent scale-110' : 'border-transparent'}`}
+            className={`h-9 w-9 rounded-xs border-2 transition ${value === c ? 'border-sys-accent scale-110' : 'border-transparent'}`}
             style={{ backgroundColor: c }}
           />
         ))}
@@ -241,7 +241,7 @@ function Chips({ label, options, value, onPick }: { label: string; options: { id
             type="button"
             onClick={() => onPick(o.id)}
             aria-pressed={value === o.id}
-            className={`rounded-sm border px-2.5 py-1.5 text-xs transition ${
+            className={`rounded-xs border px-2.5 py-1.5 text-xs transition ${
               value === o.id ? 'border-sys-accent bg-sys-accent/10 text-sys-text' : 'border-sys-border/40 text-sys-muted'
             }`}
           >

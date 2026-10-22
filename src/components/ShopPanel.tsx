@@ -93,7 +93,7 @@ export function ShopPanel({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-xs overflow-y-auto"
       onClick={onClose}
     >
       <div className="w-full max-w-2xl my-auto" onClick={(e) => e.stopPropagation()}>
@@ -153,7 +153,7 @@ export function ShopPanel({
                         type="button"
                         onClick={() => void handleBuy(c.id)}
                         disabled={busyId !== null || !affordable}
-                        className="sys-button sys-button-gold mt-2 !px-3 !py-1 !text-xs"
+                        className="sys-button sys-button-gold mt-2 px-3! py-1! text-xs!"
                       >
                         <Coins className="h-3 w-3" />
                         {c.price} G で購入

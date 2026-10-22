@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
 // GitHub Pages base path. If repo name changes, update this.
@@ -7,6 +7,10 @@ const base = process.env.VITE_BASE ?? '/solo-level-up/';
 
 export default defineConfig({
   plugins: [react()],
+  test: {
+    // Firestore's node:test suite uses a separate dependency tree and emulator.
+    include: ['src/**/*.test.ts'],
+  },
   base,
   build: {
     // Match the app's tsconfig target so esbuild doesn't down-level modern

@@ -71,7 +71,7 @@ export function AddQuestModal({ open, onClose, onSubmit, initial }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm animate-flash"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-xs animate-flash"
       onClick={onClose}
     >
       <div className="w-full max-w-lg" onClick={(e) => e.stopPropagation()}>

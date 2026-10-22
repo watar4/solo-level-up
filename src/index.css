@@ -1,6 +1,505 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+
+@theme {
+  --color-sys-bg: #050810;
+  --color-sys-panel: #0a1322;
+  --color-sys-border: #5fc9ff;
+  --color-sys-accent: #00d4ff;
+  --color-sys-gold: #ffd700;
+  --color-sys-hp: #ff4757;
+  --color-sys-mp: #3742fa;
+  --color-sys-text: #e6f0ff;
+  --color-sys-muted: #7a8aa5;
+  --color-sys-danger: #ff6b81;
+  --color-sys-ok: #2ed573;
+  --color-sys-arise: #a855f7;
+  --color-sys-arisedim: #6d28d9;
+
+  --color-rank-e: #8a9bb5;
+  --color-rank-d: #2ed573;
+  --color-rank-c: #00d4ff;
+  --color-rank-b: #3b82f6;
+  --color-rank-a: #a855f7;
+  --color-rank-s: #ffd700;
+  --color-rank-ss: #ff4757;
+
+  --font-sans: 'Noto Sans JP', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', Consolas, monospace;
+  --font-display: Orbitron, 'JetBrains Mono', monospace;
+
+  --shadow-glow:
+    0 0 12px rgba(95, 201, 255, 0.55), 0 0 24px rgba(0, 212, 255, 0.25);
+  --shadow-glow-lg:
+    0 0 18px rgba(95, 201, 255, 0.7), 0 0 48px rgba(0, 212, 255, 0.35);
+  --shadow-glow-purple:
+    0 0 12px rgba(168, 85, 247, 0.55), 0 0 24px rgba(109, 40, 217, 0.3);
+  --shadow-glow-gold:
+    0 0 12px rgba(255, 215, 0, 0.5), 0 0 24px rgba(255, 180, 0, 0.25);
+
+  --animate-pulse-slow: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --animate-scan: scan 4s linear infinite;
+  --animate-flash: flash 0.6s ease-out;
+  --animate-shimmer: shimmer 2.2s linear infinite;
+  --animate-float-slow: float 14s ease-in-out infinite;
+
+  @keyframes scan {
+    0% {
+      transform: translateY(-100%);
+    }
+    100% {
+      transform: translateY(100%);
+    }
+  }
+  @keyframes flash {
+    0% {
+      opacity: 0;
+      transform: scale(0.6);
+    }
+    60% {
+      opacity: 1;
+      transform: scale(1.05);
+    }
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+  @keyframes shimmer {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(250%);
+    }
+  }
+  @keyframes float {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-16px);
+    }
+  }
+}
+
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+}
+
+@utility sys-window {
+  /* Solo-Leveling style "system window" — sharp clipped corners with cyan
+     border + inner glow. v2: adds a hairline second frame and a top-edge
+     highlight so panels read as layered glass instead of flat boxes. */
+  position: relative;
+  background: linear-gradient(
+    180deg,
+    rgba(10, 18, 36, 0.94) 0%,
+    rgba(5, 10, 22, 0.94) 100%
+  );
+  border: 1px solid rgba(95, 201, 255, 0.55);
+  box-shadow:
+    0 0 0 1px rgba(95, 201, 255, 0.14),
+    0 0 24px rgba(0, 212, 255, 0.18),
+    0 12px 32px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(180, 230, 255, 0.22),
+    inset 0 0 24px rgba(0, 212, 255, 0.05);
+  clip-path: polygon(
+    14px 0,
+    calc(100% - 14px) 0,
+    100% 14px,
+    100% calc(100% - 14px),
+    calc(100% - 14px) 100%,
+    14px 100%,
+    0 calc(100% - 14px),
+    0 14px
+  );
+
+  /* Scanline texture + a slow holographic sheen that sweeps the panel. */
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      linear-gradient(
+        115deg,
+        transparent 0%,
+        transparent 42%,
+        rgba(120, 220, 255, 0.055) 50%,
+        transparent 58%,
+        transparent 100%
+      ),
+      linear-gradient(
+        180deg,
+        transparent 0%,
+        rgba(95, 201, 255, 0.04) 50%,
+        transparent 100%
+      );
+    background-size:
+      300% 100%,
+      100% 8px;
+    background-repeat: no-repeat, repeat-y;
+    animation: holo-sweep 9s ease-in-out infinite;
+    opacity: 0.8;
+    mix-blend-mode: screen;
+  }
+}
+
+@utility sys-title {
+  @apply text-sys-accent font-bold tracking-[0.3em] text-xs uppercase font-display;
+  text-shadow: 0 0 8px rgba(0, 212, 255, 0.5);
+}
+
+@utility sys-button {
+  @apply relative inline-flex items-center justify-center gap-2 px-4 py-2 font-bold tracking-wider uppercase text-sm;
+  color: #c2ecff;
+  user-select: none;
+  -webkit-user-select: none;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 212, 255, 0.18),
+    rgba(0, 100, 200, 0.12)
+  );
+  border: 1px solid rgba(95, 201, 255, 0.6);
+  box-shadow:
+    0 0 0 1px rgba(95, 201, 255, 0.1),
+    0 0 14px rgba(0, 212, 255, 0.25),
+    inset 0 1px 0 rgba(180, 230, 255, 0.25);
+  clip-path: polygon(
+    8px 0,
+    calc(100% - 8px) 0,
+    100% 8px,
+    100% calc(100% - 8px),
+    calc(100% - 8px) 100%,
+    8px 100%,
+    0 calc(100% - 8px),
+    0 8px
+  );
+  transition:
+    transform 80ms ease,
+    box-shadow 200ms ease,
+    background 200ms ease;
+  &:hover {
+    background: linear-gradient(
+      180deg,
+      rgba(0, 212, 255, 0.32),
+      rgba(0, 130, 220, 0.2)
+    );
+    box-shadow:
+      0 0 0 1px rgba(95, 201, 255, 0.2),
+      0 0 22px rgba(0, 212, 255, 0.45),
+      inset 0 1px 0 rgba(180, 230, 255, 0.3);
+  }
+  &:active {
+    transform: translateY(1px) scale(0.97);
+  }
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  /* clip-path crops an outer outline, so draw the keyboard-focus ring inside
+     the button edge instead. Gold keeps it distinct from the cyan hover glow. */
+  &:focus-visible {
+    outline: none;
+    box-shadow:
+      0 0 0 1px rgba(95, 201, 255, 0.1),
+      0 0 14px rgba(0, 212, 255, 0.25),
+      inset 0 0 0 2px #ffd700;
+  }
+}
+
+@utility sys-button-danger {
+  color: #ffd0d6;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 75, 105, 0.2),
+    rgba(180, 30, 60, 0.12)
+  );
+  border-color: rgba(255, 107, 129, 0.6);
+  box-shadow: 0 0 14px rgba(255, 75, 105, 0.25);
+  &:hover {
+    background: linear-gradient(
+      180deg,
+      rgba(255, 75, 105, 0.35),
+      rgba(180, 30, 60, 0.2)
+    );
+    box-shadow: 0 0 22px rgba(255, 75, 105, 0.45);
+  }
+}
+
+@utility sys-button-gold {
+  /* Gold variant — economy actions (shop purchase / savings deposit). */
+  color: #ffe9a8;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 215, 0, 0.2),
+    rgba(180, 130, 0, 0.12)
+  );
+  border-color: rgba(255, 215, 0, 0.55);
+  box-shadow: 0 0 14px rgba(255, 200, 0, 0.22);
+  &:hover {
+    background: linear-gradient(
+      180deg,
+      rgba(255, 215, 0, 0.32),
+      rgba(190, 140, 0, 0.2)
+    );
+    box-shadow: 0 0 22px rgba(255, 200, 0, 0.4);
+  }
+}
+
+@utility sys-button-arise {
+  /* Purple variant — shadow / arise-flavored actions (extraction, evolution). */
+  color: #e8d5ff;
+  background: linear-gradient(
+    180deg,
+    rgba(168, 85, 247, 0.22),
+    rgba(109, 40, 217, 0.12)
+  );
+  border-color: rgba(168, 85, 247, 0.6);
+  box-shadow: 0 0 14px rgba(168, 85, 247, 0.25);
+  &:hover {
+    background: linear-gradient(
+      180deg,
+      rgba(168, 85, 247, 0.36),
+      rgba(109, 40, 217, 0.22)
+    );
+    box-shadow: 0 0 22px rgba(168, 85, 247, 0.45);
+  }
+}
+
+@utility sys-input {
+  @apply w-full bg-black/40 border border-sys-border/40 px-3 py-2 text-sys-text outline-hidden;
+  box-shadow: inset 0 0 8px rgba(0, 212, 255, 0.08);
+  &:focus {
+    border-color: rgba(95, 201, 255, 0.9);
+    box-shadow:
+      inset 0 0 8px rgba(0, 212, 255, 0.15),
+      0 0 12px rgba(0, 212, 255, 0.25);
+  }
+  /* The global gold :focus-visible outline already covers inputs; suppress the
+     default to avoid a double ring (the offset outline + this glow). */
+  &:focus-visible {
+    outline-offset: 0;
+  }
+}
+
+@utility corner-mark {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-color: #5fc9ff;
+  pointer-events: none;
+  filter: drop-shadow(0 0 3px rgba(95, 201, 255, 0.8));
+  &.tl {
+    top: 6px;
+    left: 6px;
+    border-top: 2px solid;
+    border-left: 2px solid;
+  }
+  &.tr {
+    top: 6px;
+    right: 6px;
+    border-top: 2px solid;
+    border-right: 2px solid;
+  }
+  &.bl {
+    bottom: 6px;
+    left: 6px;
+    border-bottom: 2px solid;
+    border-left: 2px solid;
+  }
+  &.br {
+    bottom: 6px;
+    right: 6px;
+    border-bottom: 2px solid;
+    border-right: 2px solid;
+  }
+}
+
+@utility tl {
+  &.corner-mark {
+    top: 6px;
+    left: 6px;
+    border-top: 2px solid;
+    border-left: 2px solid;
+  }
+}
+
+@utility tr {
+  &.corner-mark {
+    top: 6px;
+    right: 6px;
+    border-top: 2px solid;
+    border-right: 2px solid;
+  }
+}
+
+@utility bl {
+  &.corner-mark {
+    bottom: 6px;
+    left: 6px;
+    border-bottom: 2px solid;
+    border-left: 2px solid;
+  }
+}
+
+@utility br {
+  &.corner-mark {
+    bottom: 6px;
+    right: 6px;
+    border-bottom: 2px solid;
+    border-right: 2px solid;
+  }
+}
+
+@utility sys-bar {
+  /* ── Gauge bars (EXP / HP / savings-goal) ────────────────────────────
+     Track + fill + a shimmer highlight that sweeps the filled portion.
+     Usage:
+       <div class="sys-bar"><div class="sys-bar-fill bg-…" style="width:…">
+         <span class="sys-bar-shine" /></div></div> */
+  @apply relative h-2.5 w-full overflow-hidden bg-black/50;
+  border: 1px solid rgba(95, 201, 255, 0.3);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+
+@utility sys-bar-fill {
+  @apply relative h-full overflow-hidden;
+  transition: width 500ms cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+
+@utility sys-bar-shine {
+  @apply absolute inset-y-0 w-1/3 animate-shimmer;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.35),
+    transparent
+  );
+}
+
+@utility dq-window {
+  /* ── DQ-style message window ─────────────────────────────────────────
+     The classic double-frame command/message box, tinted to this world:
+     near-black navy field, white outer frame, cyan inner hairline. Used by
+     the battle message log and command menus. */
+  position: relative;
+  background: linear-gradient(
+    180deg,
+    rgba(4, 8, 18, 0.97),
+    rgba(2, 5, 12, 0.97)
+  );
+  border: 3px solid #eaf6ff;
+  border-radius: 6px;
+  box-shadow:
+    0 0 0 2px rgba(4, 8, 18, 0.97),
+    0 0 0 3px rgba(95, 201, 255, 0.7),
+    0 0 18px rgba(0, 212, 255, 0.25),
+    inset 0 0 14px rgba(0, 212, 255, 0.07);
+  color: #eaf6ff;
+}
+
+@utility dq-cursor {
+  /* Blinking "▼" continue-cursor for message windows. */
+  animation: dq-blink 0.9s steps(2, start) infinite;
+}
+
+@utility battle-arena {
+  /* ── Battle arena ──────────────────────────────────────────────────────
+     The boss's stage: a vignetted gradient chamber with a glowing ground
+     ellipse under the sprite so the fight reads as a place, not a list. */
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(95, 201, 255, 0.35);
+  background:
+    radial-gradient(
+      ellipse 70% 45% at 50% 78%,
+      rgba(0, 212, 255, 0.1),
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 90% 70% at 50% 0%,
+      rgba(124, 58, 237, 0.14),
+      transparent 65%
+    ),
+    linear-gradient(180deg, #060b18 0%, #04070f 100%);
+  &::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    bottom: 12%;
+    width: 140px;
+    height: 26px;
+    transform: translateX(-50%);
+    border-radius: 9999px;
+    background: radial-gradient(
+      ellipse at center,
+      rgba(0, 212, 255, 0.28),
+      transparent 70%
+    );
+    filter: blur(4px);
+    pointer-events: none;
+  }
+}
+
+@utility rarity-normal {
+  /* ── Rarity identity (shadows / weapons / drops) ─────────────────────── */
+  color: #b9c6da;
+}
+
+@utility rarity-rare {
+  color: #4ecdff;
+  text-shadow: 0 0 8px rgba(78, 205, 255, 0.5);
+}
+
+@utility rarity-epic {
+  color: #c084fc;
+  text-shadow: 0 0 8px rgba(192, 132, 252, 0.55);
+}
+
+@utility rarity-legendary {
+  color: #ffd700;
+  text-shadow: 0 0 10px rgba(255, 215, 0, 0.6);
+}
+
+@utility gold-text {
+  /* Gold readout — gradient-filled numerals for the wallet display. */
+  @apply font-display font-bold;
+  background: linear-gradient(180deg, #fff3b0 0%, #ffd700 45%, #d4900a 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 6px rgba(255, 200, 0, 0.35));
+}
+
+@utility quest-picked-up {
+  /* Drag pickup feedback — runs the instant the long-press activation
+     threshold fires (isDragging flips to true), *before* any finger movement.
+     Starts at a dramatic over-lift so the user can't miss the moment the
+     card "snaps" into drag mode, then settles to the held-drag rest pose.
+     `will-change` pre-promotes to a GPU layer so the first frame paints
+     immediately instead of after the next compositor cycle. */
+  animation: quest-pickup 220ms cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
+  filter: brightness(1.22) saturate(1.15);
+  will-change: transform, box-shadow, filter;
+  outline: 2px solid rgba(95, 201, 255, 0.95);
+  outline-offset: 3px;
+}
 
 @layer base {
   html,
@@ -73,277 +572,13 @@
 }
 
 @layer components {
-  /* Solo-Leveling style "system window" — sharp clipped corners with cyan
-     border + inner glow. v2: adds a hairline second frame and a top-edge
-     highlight so panels read as layered glass instead of flat boxes. */
-  .sys-window {
-    position: relative;
-    background:
-      linear-gradient(180deg, rgba(10, 18, 36, 0.94) 0%, rgba(5, 10, 22, 0.94) 100%);
-    border: 1px solid rgba(95, 201, 255, 0.55);
-    box-shadow:
-      0 0 0 1px rgba(95, 201, 255, 0.14),
-      0 0 24px rgba(0, 212, 255, 0.18),
-      0 12px 32px rgba(0, 0, 0, 0.45),
-      inset 0 1px 0 rgba(180, 230, 255, 0.22),
-      inset 0 0 24px rgba(0, 212, 255, 0.05);
-    clip-path: polygon(
-      14px 0,
-      calc(100% - 14px) 0,
-      100% 14px,
-      100% calc(100% - 14px),
-      calc(100% - 14px) 100%,
-      14px 100%,
-      0 calc(100% - 14px),
-      0 14px
-    );
-  }
-
-  /* Scanline texture + a slow holographic sheen that sweeps the panel. */
-  .sys-window::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    background:
-      linear-gradient(
-        115deg,
-        transparent 0%,
-        transparent 42%,
-        rgba(120, 220, 255, 0.055) 50%,
-        transparent 58%,
-        transparent 100%
-      ),
-      linear-gradient(
-        180deg,
-        transparent 0%,
-        rgba(95, 201, 255, 0.04) 50%,
-        transparent 100%
-      );
-    background-size: 300% 100%, 100% 8px;
-    background-repeat: no-repeat, repeat-y;
-    animation: holo-sweep 9s ease-in-out infinite;
-    opacity: 0.8;
-    mix-blend-mode: screen;
-  }
   @keyframes holo-sweep {
     0%, 55% { background-position: 130% 0, 0 0; }
     85%, 100% { background-position: -60% 0, 0 0; }
   }
-
-  .sys-title {
-    @apply text-sys-accent font-bold tracking-[0.3em] text-xs uppercase font-display;
-    text-shadow: 0 0 8px rgba(0, 212, 255, 0.5);
-  }
-
-  .sys-button {
-    @apply relative inline-flex items-center justify-center gap-2 px-4 py-2 font-bold tracking-wider uppercase text-sm;
-    color: #c2ecff;
-    user-select: none;
-    -webkit-user-select: none;
-    background: linear-gradient(180deg, rgba(0, 212, 255, 0.18), rgba(0, 100, 200, 0.12));
-    border: 1px solid rgba(95, 201, 255, 0.6);
-    box-shadow:
-      0 0 0 1px rgba(95, 201, 255, 0.1),
-      0 0 14px rgba(0, 212, 255, 0.25),
-      inset 0 1px 0 rgba(180, 230, 255, 0.25);
-    clip-path: polygon(
-      8px 0,
-      calc(100% - 8px) 0,
-      100% 8px,
-      100% calc(100% - 8px),
-      calc(100% - 8px) 100%,
-      8px 100%,
-      0 calc(100% - 8px),
-      0 8px
-    );
-    transition: transform 80ms ease, box-shadow 200ms ease, background 200ms ease;
-  }
-  .sys-button:hover {
-    background: linear-gradient(180deg, rgba(0, 212, 255, 0.32), rgba(0, 130, 220, 0.2));
-    box-shadow:
-      0 0 0 1px rgba(95, 201, 255, 0.2),
-      0 0 22px rgba(0, 212, 255, 0.45),
-      inset 0 1px 0 rgba(180, 230, 255, 0.3);
-  }
-  .sys-button:active {
-    transform: translateY(1px) scale(0.97);
-  }
-  .sys-button:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
-  /* clip-path crops an outer outline, so draw the keyboard-focus ring inside
-     the button edge instead. Gold keeps it distinct from the cyan hover glow. */
-  .sys-button:focus-visible {
-    outline: none;
-    box-shadow:
-      0 0 0 1px rgba(95, 201, 255, 0.1),
-      0 0 14px rgba(0, 212, 255, 0.25),
-      inset 0 0 0 2px #ffd700;
-  }
-
-  .sys-button-danger {
-    color: #ffd0d6;
-    background: linear-gradient(180deg, rgba(255, 75, 105, 0.2), rgba(180, 30, 60, 0.12));
-    border-color: rgba(255, 107, 129, 0.6);
-    box-shadow: 0 0 14px rgba(255, 75, 105, 0.25);
-  }
-  .sys-button-danger:hover {
-    background: linear-gradient(180deg, rgba(255, 75, 105, 0.35), rgba(180, 30, 60, 0.2));
-    box-shadow: 0 0 22px rgba(255, 75, 105, 0.45);
-  }
-
-  /* Gold variant — economy actions (shop purchase / savings deposit). */
-  .sys-button-gold {
-    color: #ffe9a8;
-    background: linear-gradient(180deg, rgba(255, 215, 0, 0.2), rgba(180, 130, 0, 0.12));
-    border-color: rgba(255, 215, 0, 0.55);
-    box-shadow: 0 0 14px rgba(255, 200, 0, 0.22);
-  }
-  .sys-button-gold:hover {
-    background: linear-gradient(180deg, rgba(255, 215, 0, 0.32), rgba(190, 140, 0, 0.2));
-    box-shadow: 0 0 22px rgba(255, 200, 0, 0.4);
-  }
-
-  /* Purple variant — shadow / arise-flavored actions (extraction, evolution). */
-  .sys-button-arise {
-    color: #e8d5ff;
-    background: linear-gradient(180deg, rgba(168, 85, 247, 0.22), rgba(109, 40, 217, 0.12));
-    border-color: rgba(168, 85, 247, 0.6);
-    box-shadow: 0 0 14px rgba(168, 85, 247, 0.25);
-  }
-  .sys-button-arise:hover {
-    background: linear-gradient(180deg, rgba(168, 85, 247, 0.36), rgba(109, 40, 217, 0.22));
-    box-shadow: 0 0 22px rgba(168, 85, 247, 0.45);
-  }
-
-  .sys-input {
-    @apply w-full bg-black/40 border border-sys-border/40 px-3 py-2 text-sys-text outline-none;
-    box-shadow: inset 0 0 8px rgba(0, 212, 255, 0.08);
-  }
-  .sys-input:focus {
-    border-color: rgba(95, 201, 255, 0.9);
-    box-shadow:
-      inset 0 0 8px rgba(0, 212, 255, 0.15),
-      0 0 12px rgba(0, 212, 255, 0.25);
-  }
-  /* The global gold :focus-visible outline already covers inputs; suppress the
-     default to avoid a double ring (the offset outline + this glow). */
-  .sys-input:focus-visible {
-    outline-offset: 0;
-  }
-
-  .corner-mark {
-    position: absolute;
-    width: 10px;
-    height: 10px;
-    border-color: #5fc9ff;
-    pointer-events: none;
-    filter: drop-shadow(0 0 3px rgba(95, 201, 255, 0.8));
-  }
-  .corner-mark.tl { top: 6px; left: 6px; border-top: 2px solid; border-left: 2px solid; }
-  .corner-mark.tr { top: 6px; right: 6px; border-top: 2px solid; border-right: 2px solid; }
-  .corner-mark.bl { bottom: 6px; left: 6px; border-bottom: 2px solid; border-left: 2px solid; }
-  .corner-mark.br { bottom: 6px; right: 6px; border-bottom: 2px solid; border-right: 2px solid; }
-
-  /* ── Gauge bars (EXP / HP / savings-goal) ────────────────────────────
-     Track + fill + a shimmer highlight that sweeps the filled portion.
-     Usage:
-       <div class="sys-bar"><div class="sys-bar-fill bg-…" style="width:…">
-         <span class="sys-bar-shine" /></div></div> */
-  .sys-bar {
-    @apply relative h-2.5 w-full overflow-hidden bg-black/50;
-    border: 1px solid rgba(95, 201, 255, 0.3);
-    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.6);
-  }
-  .sys-bar-fill {
-    @apply relative h-full overflow-hidden;
-    transition: width 500ms cubic-bezier(0.2, 0.8, 0.3, 1);
-  }
-  .sys-bar-shine {
-    @apply absolute inset-y-0 w-1/3 animate-shimmer;
-    background: linear-gradient(
-      90deg,
-      transparent,
-      rgba(255, 255, 255, 0.35),
-      transparent
-    );
-  }
-
-  /* ── DQ-style message window ─────────────────────────────────────────
-     The classic double-frame command/message box, tinted to this world:
-     near-black navy field, white outer frame, cyan inner hairline. Used by
-     the battle message log and command menus. */
-  .dq-window {
-    position: relative;
-    background: linear-gradient(180deg, rgba(4, 8, 18, 0.97), rgba(2, 5, 12, 0.97));
-    border: 3px solid #eaf6ff;
-    border-radius: 6px;
-    box-shadow:
-      0 0 0 2px rgba(4, 8, 18, 0.97),
-      0 0 0 3px rgba(95, 201, 255, 0.7),
-      0 0 18px rgba(0, 212, 255, 0.25),
-      inset 0 0 14px rgba(0, 212, 255, 0.07);
-    color: #eaf6ff;
-  }
-
-  /* Blinking "▼" continue-cursor for message windows. */
-  .dq-cursor {
-    animation: dq-blink 0.9s steps(2, start) infinite;
-  }
   @keyframes dq-blink {
     to { visibility: hidden; }
   }
-
-  /* ── Battle arena ──────────────────────────────────────────────────────
-     The boss's stage: a vignetted gradient chamber with a glowing ground
-     ellipse under the sprite so the fight reads as a place, not a list. */
-  .battle-arena {
-    position: relative;
-    overflow: hidden;
-    border: 1px solid rgba(95, 201, 255, 0.35);
-    background:
-      radial-gradient(ellipse 70% 45% at 50% 78%, rgba(0, 212, 255, 0.10), transparent 70%),
-      radial-gradient(ellipse 90% 70% at 50% 0%, rgba(124, 58, 237, 0.14), transparent 65%),
-      linear-gradient(180deg, #060b18 0%, #04070f 100%);
-  }
-  .battle-arena::after {
-    content: '';
-    position: absolute;
-    left: 50%;
-    bottom: 12%;
-    width: 140px;
-    height: 26px;
-    transform: translateX(-50%);
-    border-radius: 9999px;
-    background: radial-gradient(ellipse at center, rgba(0, 212, 255, 0.28), transparent 70%);
-    filter: blur(4px);
-    pointer-events: none;
-  }
-
-  /* ── Rarity identity (shadows / weapons / drops) ─────────────────────── */
-  .rarity-normal { color: #b9c6da; }
-  .rarity-rare { color: #4ecdff; text-shadow: 0 0 8px rgba(78, 205, 255, 0.5); }
-  .rarity-epic { color: #c084fc; text-shadow: 0 0 8px rgba(192, 132, 252, 0.55); }
-  .rarity-legendary { color: #ffd700; text-shadow: 0 0 10px rgba(255, 215, 0, 0.6); }
-
-  /* Gold readout — gradient-filled numerals for the wallet display. */
-  .gold-text {
-    @apply font-display font-bold;
-    background: linear-gradient(180deg, #fff3b0 0%, #ffd700 45%, #d4900a 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-    filter: drop-shadow(0 0 6px rgba(255, 200, 0, 0.35));
-  }
-
-  /* Drag pickup feedback — runs the instant the long-press activation
-     threshold fires (isDragging flips to true), *before* any finger movement.
-     Starts at a dramatic over-lift so the user can't miss the moment the
-     card "snaps" into drag mode, then settles to the held-drag rest pose.
-     `will-change` pre-promotes to a GPU layer so the first frame paints
-     immediately instead of after the next compositor cycle. */
   @keyframes quest-pickup {
     0% {
       transform: scale(1.18) translateY(-14px);
@@ -362,13 +597,6 @@
         0 0 30px rgba(0, 212, 255, 0.75),
         inset 0 0 0 1px rgba(95, 201, 255, 0.85);
     }
-  }
-  .quest-picked-up {
-    animation: quest-pickup 220ms cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
-    filter: brightness(1.22) saturate(1.15);
-    will-change: transform, box-shadow, filter;
-    outline: 2px solid rgba(95, 201, 255, 0.95);
-    outline-offset: 3px;
   }
 }
 
