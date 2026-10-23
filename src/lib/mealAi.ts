@@ -107,15 +107,14 @@ export interface MealReviewParams {
 }
 
 // Direct browser → Gemini call. The Generative Language API allows
-// cross-origin requests, so this works without a backend proxy. The key rides
-// in the query string (the Option-B model already accepts the key being
-// visible in this browser). Throws an Error with a human-readable message.
+// cross-origin requests, so this works without a backend proxy. Keep the key
+// out of request URLs and send it in the API's supported authentication header.
 export async function requestMealReview({
   apiKey,
   model,
   message,
 }: MealReviewParams): Promise<string> {
-  const url = `${GEMINI_BASE}/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const url = `${GEMINI_BASE}/${encodeURIComponent(model)}:generateContent`;
 
   // Gemini 2.5 Flash defaults to "thinking", which spends the output-token
   // budget on hidden reasoning and can leave the visible answer truncated
@@ -134,7 +133,7 @@ export async function requestMealReview({
   try {
     res = await fetch(url, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
       body: JSON.stringify({
         system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
         contents: [{ role: 'user', parts: [{ text: message }] }],
